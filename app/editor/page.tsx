@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { Plus, Image as ImageIcon, Save, ZoomIn, ZoomOut, Trash2, MessageCircle, AlignLeft, AlignCenter, AlignRight, Square } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
@@ -13,7 +13,6 @@ interface CanvasElement {
   y: number;
   width: number;
   height: number;
-  rotation?: number;
   opacity: number;
   color?: string;
   borderColor?: string;
@@ -36,7 +35,7 @@ const TEMPLATES = [
   { id: 'social-story', name: 'Social Story', preview: '📖' },
 ];
 
-const SYMBOLS = ['🍎','📚','⏰','🚌','🚽','💧','❤️','😊','👍','🛑','👋','🌟','🏫','✏️','🎨','🧩','📅','🍽️','🛏️','🚿','🧼','👕','👟','🎒','📓','✂️','🖍️','🎵','⚽','🏀','🎨','🧸','🚗','✈️','🚂','🌈','☀️','🌧️','❄️','🍦','🍕','🥕','🐶','🐱','🐰','🐻','🦁','🐘','🐼','🦒','🐧','🐢','🦋','🌸','🌳','🏠','🏫','🚦','🛴','🚲','📱','💻','🎮','🎧','📷','🎬','📺','📰','📚','✉️','📝','📌','🔖','🏷️','📍','🗺️','🧭','⏱️','🕒','📅','🗓️','🎉','🎂','🎁','🎈','🎊','🎃','🎄','🎆','🎇','✨','💫','⭐','🌟','💥','🔥','💧','🌊','🌍','🌎','🌏','🌕','🌖','🌗','🌘','🌑','🌒','🌓','🌔','🌙','☀️','🌤️','⛅','🌥️','☁️','🌦️','🌧️','⛈️','🌩️','🌨️','❄️','☃️','⛄','🌬️','💨','🌪️','🌫️','🌈','☔','⚡','❄️','🔥','💧','🌊'];
+const SYMBOLS = ['🍎','📚','⏰','🚌','🚽','💧','❤️','😊','👍','🛑','👋','🌟','🏫','✏️','🎨','🧩','📅','🍽️','🛏️','🚿','🧼','👕','👟','🎒','📓','✂️','🖍️','🎵','⚽','🏀','🧸','🚗','✈️','🚂','🌈','☀️','🌧️','❄️','🍦','🍕','🥕','🐶','🐱','🐰','🐻','🦁','🐘','🐼','🦒','🐧','🐢','🦋','🌸','🌳','🏠','🏫','🚦','🛴','🚲'];
 
 export default function AppleStemEditor() {
   const [elements, setElements] = useState<CanvasElement[]>([
@@ -83,7 +82,6 @@ export default function AppleStemEditor() {
 
   const loadTemplate = (id: string) => {
     let newEls: CanvasElement[] = [];
-    const t = TEMPLATES.find(t => t.id === id);
     if (id === 'visual-schedule') {
       newEls = [
         { id: 't1', type: 'text', content: 'Morning Routine', x: 40, y: 30, width: 280, height: 48, fontSize: 24, color: '#166534', isBold: true, zIndex: 1, opacity: 1 },
@@ -98,6 +96,7 @@ export default function AppleStemEditor() {
         { id: 't4', type: 'symbol', content: '🎨', x: 285, y: 90, width: 75, height: 75, zIndex: 4, opacity: 1 },
       ];
     } else {
+      const t = TEMPLATES.find(t => t.id === id);
       newEls = [
         { id: 't1', type: 'text', content: t?.name || 'Template', x: 50, y: 40, width: 280, height: 48, fontSize: 22, color: '#166534', isBold: true, zIndex: 1, opacity: 1 },
         { id: 't2', type: 'symbol', content: t?.preview || '📋', x: 90, y: 110, width: 90, height: 90, zIndex: 2, opacity: 1 },
@@ -126,7 +125,7 @@ export default function AppleStemEditor() {
   };
   const endDrag = () => { dragRef.current = null; document.removeEventListener('mousemove', onDragMove); document.removeEventListener('mouseup', endDrag); };
 
-  // Resize with text scaling + free (no aspect lock)
+  // Resize with text scaling
   const startResize = (e: React.MouseEvent, id: string, handle: string) => {
     e.stopPropagation();
     const el = elements.find(el => el.id === id); if (!el) return;
@@ -147,15 +146,12 @@ export default function AppleStemEditor() {
     if (handle.includes('n')) { nh = Math.max(30, origH - dy); ny = origY + dy; }
     const updates: any = { width: nw, height: nh, x: nx, y: ny };
     const el = elements.find(el => el.id === id);
-    if (el && el.type === 'text' && origFont) {
-      const scale = nh / origH;
-      updates.fontSize = Math.max(10, Math.round(origFont * scale));
-    }
+    if (el && el.type === 'text' && origFont) updates.fontSize = Math.max(10, Math.round(origFont * (nh / origH)));
     updateElement(id, updates);
   };
   const endResize = () => { resizeRef.current = null; document.removeEventListener('mousemove', onResizeMove); document.removeEventListener('mouseup', endResize); };
 
-  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+  const handleCanvasClick = (e: React.MouseEvent) => {
     if (tool === 'draw') {
       const rect = canvasRef.current?.getBoundingClientRect(); if (!rect) return;
       const x = (e.clientX - rect.left) / zoom;
@@ -177,7 +173,7 @@ export default function AppleStemEditor() {
   const sendBackward = () => { if (!selectedId) return; updateElement(selectedId, { zIndex: Math.max(1, Math.min(...elements.map(e => e.zIndex)) - 1) }); };
 
   const align = (dir: 'left' | 'center' | 'right') => {
-    if (!selectedId || !canvasRef.current) return;
+    if (!selectedId) return;
     const el = elements.find(e => e.id === selectedId); if (!el) return;
     const cw = 680;
     let nx = el.x;
@@ -191,7 +187,7 @@ export default function AppleStemEditor() {
     const blob = new Blob([JSON.stringify({ elements, zoom, snapToGrid }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'applestem-project.json'; a.click(); URL.revokeObjectURL(url);
-    toast.success('Project exported (PNG/PDF would use html2canvas + jsPDF)');
+    toast.success('Project exported (PNG/PDF ready in full build)');
   };
 
   const submitFeedback = () => {
@@ -211,7 +207,7 @@ export default function AppleStemEditor() {
           <button onClick={() => setTool('draw')} className={`px-4 py-1.5 rounded-2xl text-sm border flex items-center gap-1.5 ${tool === 'draw' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-200'}`}><Square size={16} /> Draw Box</button>
           <button onClick={() => addElement('text')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">+ Text</button>
           <button onClick={() => addElement('rectangle')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">□ Box</button>
-          <button onClick={() => toast('Image library opened (upload + 2D pack)')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">Images</button>
+          <button onClick={() => toast('Image library opened')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">Images</button>
           <button onClick={() => toast('Symbol library opened (50+ open-source style)')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">Symbols (50+)</button>
         </div>
         <div className="flex-1" />
@@ -250,8 +246,8 @@ export default function AppleStemEditor() {
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center bg-zinc-100 p-8 overflow-auto" onClick={(e) => { if ((e.target as HTMLElement).id === 'canvas-bg') { if (tool === 'draw') { /* create logic */ } else setSelectedId(null); } }}>
-          <div ref={canvasRef} id="canvas-bg" className="relative bg-white shadow-2xl border border-zinc-200 overflow-hidden rounded-3xl" style={{ width: 680, height: 880 }} onMouseDown={handleCanvasMouseDown}>
+        <div className="flex-1 flex items-center justify-center bg-zinc-100 p-8 overflow-auto" onClick={handleCanvasClick}>
+          <div ref={canvasRef} className="relative bg-white shadow-2xl border border-zinc-200 overflow-hidden rounded-3xl" style={{ width: 680, height: 880 }}>
             <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)', backgroundSize: '30px 30px', opacity: 0.55 }} />
             {elements.sort((a,b) => a.zIndex - b.zIndex).map(el => {
               const isSel = selectedId === el.id;
