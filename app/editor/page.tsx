@@ -1,390 +1,517 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import Link from 'next/link';
-import { Plus, Image as ImageIcon, Save, ZoomIn, ZoomOut, Trash2, MessageCircle, AlignLeft, AlignCenter, AlignRight, Square, Copy, ArrowUp, BookOpen, Eye, EyeOff } from 'lucide-react';
-import { Toaster, toast } from 'sonner';
+import { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 
-interface CanvasElement {
-  id: string;
-  type: 'text' | 'image' | 'symbol' | 'rectangle';
-  content: string;
+interface CanvasItem {
+  id: number;
+  type: 'text' | 'photo';
+  content?: string;
+  src?: string;
   x: number;
   y: number;
   width: number;
   height: number;
-  opacity: number;
-  color?: string;
-  borderColor?: string;
-  borderWidth?: number;
-  borderRadius?: number;
+  rotation?: number;
   fontSize?: number;
+  color?: string;
   fontFamily?: string;
-  isBold?: boolean;
-  isItalic?: boolean;
-  isUnderlined?: boolean;
-  zIndex: number;
+  fontWeight?: 'normal' | 'bold';
+  fontStyle?: 'normal' | 'italic';
+  textAlign?: 'left' | 'center' | 'right';
+  locked?: boolean;
+  hidden?: boolean;
 }
 
-const TEMPLATES = [
-  { id: 'visual-schedule', name: 'Visual Schedule', preview: '📅' },
-  { id: 'first-then', name: 'First-Then Board', preview: '➡️' },
-  { id: 'choice-board', name: 'Choice Board', preview: '🔲' },
-  { id: 'picture-card', name: 'Picture Card', preview: '🖼️' },
-  { id: 'communication-board', name: 'Communication Board', preview: '💬' },
-  { id: 'social-story', name: 'Social Story', preview: '📖' },
-];
+export default function Editor() {
+  const [items, setItems] = useState<CanvasItem[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [resizing, setResizing] = useState<{ id: number; corner: string } | null>(null);
+  const [rotating, setRotating] = useState<number | null>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [past, setPast] = useState<CanvasItem[][]>([]);
+  const [future, setFuture] = useState<CanvasItem[][]>([]);
+  const [canvasBg, setCanvasBg] = useState('#ffffff');
+  const [snap, setSnap] = useState(true);
+  const grid = 10;
 
-const SYMBOLS = ['🍎','📚','⏰','🚌','🚽','💧','❤️','😊','👍','🛑','👋','🌟','🏫','✏️','🎨','🧩','📅','🍽️','🛏️','🚿','🧼','👕','👟','🎒','📓','✂️','🖍️','🎵','⚽','🏀','🧸','🚗','✈️','🚂','🌈','☀️','🌧️','❄️','🍦','🍕','🥕','🐶','🐱','🐰','🐻','🦁','🐘','🐼','🦒','🐧','🐢','🦋','🌸','🌳','🏠','🏫','🚦','🛴','🚲'];
+  const selected = items.find(i => i.id === selectedId);
 
-export default function AppleStemEditor() {
-  const [elements, setElements] = useState<CanvasElement[]>([
-    { id: 'd1', type: 'text', content: 'Welcome to AppleStem', x: 80, y: 50, width: 300, height: 55, fontSize: 26, color: '#166534', isBold: true, zIndex: 1, opacity: 1 },
-    { id: 'd2', type: 'rectangle', content: '', x: 80, y: 140, width: 200, height: 110, color: '#fefce8', borderColor: '#166534', borderWidth: 4, borderRadius: 16, zIndex: 2, opacity: 1 },
-  ]);
-  const [selectedId, setSelectedId] = useState<string | null>('d1');
-  const [zoom, setZoom] = useState(1);
-  const [snapToGrid, setSnapToGrid] = useState(true);
-  const [tool, setTool] = useState<'select' | 'draw'>('select');
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
-  const [feedbackMsg, setFeedbackMsg] = useState('');
-  const [feedbackContact, setFeedbackContact] = useState('');
-
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<any>(null);
-  const resizeRef = useRef<any>(null);
-
-  const selectedElement = elements.find(el => el.id === selectedId);
-
-  const updateElement = (id: string, updates: Partial<CanvasElement>) => {
-    setElements(prev => prev.map(el => el.id === id ? { ...el, ...updates } : el));
+  // ---------- History ----------
+  const pushHistory = (next: CanvasItem[]) => {
+    setPast(p => [...p, items]);
+    setFuture([]);
+    setItems(next);
   };
 
-  const addElement = (type: CanvasElement['type'], extra: Partial<CanvasElement> = {}) => {
-    const newEl: CanvasElement = {
-      id: Date.now().toString(),
-      type,
-      content: type === 'text' ? 'New text' : type === 'symbol' ? '🍎' : '',
-      x: 100 + (elements.length % 6) * 25,
-      y: 100 + (elements.length % 5) * 25,
-      width: type === 'text' ? 200 : type === 'rectangle' ? 160 : 70,
-      height: type === 'text' ? 50 : type === 'rectangle' ? 100 : 70,
-      opacity: 1,
-      zIndex: Math.max(0, ...elements.map(e => e.zIndex || 0)) + 1,
-      ...extra,
+  const undo = () => {
+    if (past.length === 0) return;
+    const prev = past[past.length - 1];
+    setFuture(f => [items, ...f]);
+    setPast(p => p.slice(0, -1));
+    setItems(prev);
+  };
+
+  const redo = () => {
+    if (future.length === 0) return;
+    const next = future[0];
+    setPast(p => [...p, items]);
+    setFuture(f => f.slice(1));
+    setItems(next);
+  };
+
+  // ---------- Keyboard ----------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId && !selected?.locked) {
+        deleteSelected();
+      }
+      if (e.key === 'Escape') setSelectedId(null);
     };
-    if (type === 'text') { newEl.fontSize = 22; newEl.color = '#1e2937'; newEl.fontFamily = 'system-ui'; }
-    if (type === 'rectangle') { newEl.color = '#fefce8'; newEl.borderColor = '#166534'; newEl.borderWidth = 3; newEl.borderRadius = 12; }
-    setElements(prev => [...prev, newEl]);
-    setSelectedId(newEl.id);
-    toast.success(`${type} added`);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  // ---------- Helpers ----------
+  const updateItem = (id: number, changes: Partial<CanvasItem>) => {
+    const next = items.map(i => (i.id === id ? { ...i, ...changes } : i));
+    setItems(next);
   };
 
-  const loadTemplate = (id: string) => {
-    let newEls: CanvasElement[] = [];
-    if (id === 'visual-schedule') {
-      newEls = [
-        { id: 't1', type: 'text', content: 'Morning Routine', x: 40, y: 30, width: 280, height: 48, fontSize: 24, color: '#166534', isBold: true, zIndex: 1, opacity: 1 },
-        { id: 't2', type: 'symbol', content: '🍎', x: 50, y: 95, width: 65, height: 65, zIndex: 2, opacity: 1 },
-        { id: 't3', type: 'text', content: 'Breakfast', x: 130, y: 110, width: 160, height: 38, fontSize: 18, zIndex: 3, opacity: 1 },
-      ];
-    } else if (id === 'first-then') {
-      newEls = [
-        { id: 't1', type: 'text', content: 'First', x: 40, y: 35, width: 110, height: 38, fontSize: 20, color: '#166534', isBold: true, zIndex: 1, opacity: 1 },
-        { id: 't2', type: 'symbol', content: '📚', x: 45, y: 90, width: 75, height: 75, zIndex: 2, opacity: 1 },
-        { id: 't3', type: 'text', content: 'Then', x: 280, y: 35, width: 110, height: 38, fontSize: 20, color: '#854d0e', isBold: true, zIndex: 3, opacity: 1 },
-        { id: 't4', type: 'symbol', content: '🎨', x: 285, y: 90, width: 75, height: 75, zIndex: 4, opacity: 1 },
-      ];
-    } else {
-      const t = TEMPLATES.find(t => t.id === id);
-      newEls = [
-        { id: 't1', type: 'text', content: t?.name || 'Template', x: 50, y: 40, width: 280, height: 48, fontSize: 22, color: '#166534', isBold: true, zIndex: 1, opacity: 1 },
-        { id: 't2', type: 'symbol', content: t?.preview || '📋', x: 90, y: 110, width: 90, height: 90, zIndex: 2, opacity: 1 },
-      ];
-    }
-    setElements(newEls);
-    setSelectedId(newEls[0]?.id || null);
-    toast.success('Template loaded');
-  };
+  const commit = () => pushHistory(items);
 
-  // Drag
-  const startDrag = (e: React.MouseEvent, id: string) => {
-    const el = elements.find(el => el.id === id); if (!el) return;
-    dragRef.current = { id, startX: e.clientX, startY: e.clientY, origX: el.x, origY: el.y };
-    setSelectedId(id);
-    document.addEventListener('mousemove', onDragMove);
-    document.addEventListener('mouseup', endDrag);
-  };
-  const onDragMove = (e: MouseEvent) => {
-    if (!dragRef.current) return;
-    const { id, startX, startY, origX, origY } = dragRef.current;
-    let nx = origX + (e.clientX - startX) / zoom;
-    let ny = origY + (e.clientY - startY) / zoom;
-    if (snapToGrid) { nx = Math.round(nx / 20) * 20; ny = Math.round(ny / 20) * 20; }
-    updateElement(id, { x: Math.max(0, nx), y: Math.max(0, ny) });
-  };
-  const endDrag = () => { dragRef.current = null; document.removeEventListener('mousemove', onDragMove); document.removeEventListener('mouseup', endDrag); };
-
-  // Resize with text scaling
-  const startResize = (e: React.MouseEvent, id: string, handle: string) => {
-    e.stopPropagation();
-    const el = elements.find(el => el.id === id); if (!el) return;
-    resizeRef.current = { id, handle, startX: e.clientX, startY: e.clientY, origW: el.width, origH: el.height, origX: el.x, origY: el.y, origFont: el.fontSize || 20 };
-    setSelectedId(id);
-    document.addEventListener('mousemove', onResizeMove);
-    document.addEventListener('mouseup', endResize);
-  };
-  const onResizeMove = (e: MouseEvent) => {
-    if (!resizeRef.current) return;
-    const { id, handle, startX, startY, origW, origH, origX, origY, origFont } = resizeRef.current;
-    const dx = (e.clientX - startX) / zoom;
-    const dy = (e.clientY - startY) / zoom;
-    let nw = origW, nh = origH, nx = origX, ny = origY;
-    if (handle.includes('e')) nw = Math.max(40, origW + dx);
-    if (handle.includes('w')) { nw = Math.max(40, origW - dx); nx = origX + dx; }
-    if (handle.includes('s')) nh = Math.max(30, origH + dy);
-    if (handle.includes('n')) { nh = Math.max(30, origH - dy); ny = origY + dy; }
-    const updates: any = { width: nw, height: nh, x: nx, y: ny };
-    const el = elements.find(el => el.id === id);
-    if (el && el.type === 'text' && origFont) updates.fontSize = Math.max(10, Math.round(origFont * (nh / origH)));
-    updateElement(id, updates);
-  };
-  const endResize = () => { resizeRef.current = null; document.removeEventListener('mousemove', onResizeMove); document.removeEventListener('mouseup', endResize); };
-
-  const handleCanvasClick = (e: React.MouseEvent) => {
-    if (tool === 'draw') {
-      const rect = canvasRef.current?.getBoundingClientRect(); if (!rect) return;
-      const x = (e.clientX - rect.left) / zoom;
-      const y = (e.clientY - rect.top) / zoom;
-      addElement('rectangle', { x: Math.max(0, x - 80), y: Math.max(0, y - 60), width: 160, height: 110 });
-      setTool('select');
-    } else {
-      setSelectedId(null);
-    }
-  };
-
-  const handleElementMouseDown = (e: React.MouseEvent, id: string) => {
-    if (tool === 'select') startDrag(e, id);
-  };
-
-  const deleteSelected = () => { if (!selectedId) return; setElements(p => p.filter(el => el.id !== selectedId)); setSelectedId(null); toast.success('Deleted'); };
-  const duplicateSelected = () => { if (!selectedId) return; const el = elements.find(e => e.id === selectedId); if (!el) return; const n = { ...el, id: Date.now().toString(), x: el.x + 25, y: el.y + 25, zIndex: Math.max(...elements.map(e => e.zIndex)) + 1 }; setElements(p => [...p, n]); setSelectedId(n.id); toast.success('Duplicated'); };
-  const bringForward = () => { if (!selectedId) return; updateElement(selectedId, { zIndex: Math.max(...elements.map(e => e.zIndex)) + 1 }); };
-
-  const align = (dir: 'left' | 'center' | 'right') => {
+  const deleteSelected = () => {
     if (!selectedId) return;
-    const el = elements.find(e => e.id === selectedId); if (!el) return;
-    const cw = 680;
-    let nx = el.x;
-    if (dir === 'left') nx = 20;
-    if (dir === 'center') nx = (cw - el.width) / 2;
-    if (dir === 'right') nx = cw - el.width - 20;
-    updateElement(selectedId, { x: nx });
+    pushHistory(items.filter(i => i.id !== selectedId));
+    setSelectedId(null);
   };
 
-  const exportProject = () => {
-    const blob = new Blob([JSON.stringify({ elements, zoom, snapToGrid }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'applestem-project.json'; a.click(); URL.revokeObjectURL(url);
-    toast.success('Project exported (full PNG/PDF ready next)');
+  // ---------- Add content ----------
+  const addText = () => {
+    const item: CanvasItem = {
+      id: Date.now(),
+      type: 'text',
+      content: 'Double-click to edit',
+      x: 200,
+      y: 180,
+      width: 220,
+      height: 50,
+      fontSize: 22,
+      color: '#0f172a',
+      fontFamily: 'system-ui',
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textAlign: 'left',
+      rotation: 0,
+    };
+    pushHistory([...items, item]);
+    setSelectedId(item.id);
   };
 
-  const submitFeedback = () => {
-    if (!feedbackMsg.trim()) return toast.error('Please enter feedback');
-    toast.success('Thank you! Feedback received.');
-    setShowFeedback(false); setFeedbackMsg(''); setFeedbackContact('');
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    addElement('image', { content: url, width: 200, height: 150 });
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const item: CanvasItem = {
+        id: Date.now(),
+        type: 'photo',
+        src: ev.target?.result as string,
+        x: 250,
+        y: 160,
+        width: 240,
+        height: 180,
+        rotation: 0,
+      };
+      pushHistory([...items, item]);
+      setSelectedId(item.id);
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Simple floating context toolbar
-  const ContextToolbar = () => {
-    if (!selectedElement) return null;
-    return (
-      <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex gap-1 bg-white border shadow-xl rounded-2xl p-1 z-[70]">
-        <button onClick={duplicateSelected} className="p-2 hover:bg-emerald-50 rounded-xl"><Copy size={16} /></button>
-        <button onClick={deleteSelected} className="p-2 hover:bg-red-50 rounded-xl text-red-600"><Trash2 size={16} /></button>
-        <button onClick={bringForward} className="p-2 hover:bg-emerald-50 rounded-xl"><ArrowUp size={16} /></button>
-      </div>
-    );
+  // ---------- Templates ----------
+  const loadTemplate = (name: string) => {
+    const base = Date.now();
+    let news: CanvasItem[] = [];
+
+    if (name === 'Visual Schedule') {
+      news = [
+        { id: base, type: 'text', content: "Today's Schedule", x: 180, y: 80, width: 300, height: 40, fontSize: 26, color: '#0f766e', fontWeight: 'bold', rotation: 0 },
+        { id: base + 1, type: 'text', content: '☀️  Morning Work', x: 180, y: 140, width: 280, height: 36, fontSize: 20, rotation: 0 },
+        { id: base + 2, type: 'text', content: '🍎  Snack', x: 180, y: 185, width: 280, height: 36, fontSize: 20, rotation: 0 },
+        { id: base + 3, type: 'text', content: '📚  Reading', x: 180, y: 230, width: 280, height: 36, fontSize: 20, rotation: 0 },
+        { id: base + 4, type: 'text', content: '🍽️  Lunch', x: 180, y: 275, width: 280, height: 36, fontSize: 20, rotation: 0 },
+      ];
+    } else if (name === 'First-Then') {
+      news = [
+        { id: base, type: 'text', content: 'FIRST', x: 160, y: 120, width: 140, height: 40, fontSize: 24, color: '#0f766e', fontWeight: 'bold', rotation: 0 },
+        { id: base + 1, type: 'text', content: 'Work Task', x: 160, y: 170, width: 140, height: 36, fontSize: 18, rotation: 0 },
+        { id: base + 2, type: 'text', content: 'THEN', x: 380, y: 120, width: 140, height: 40, fontSize: 24, color: '#0f766e', fontWeight: 'bold', rotation: 0 },
+        { id: base + 3, type: 'text', content: 'Choice Time', x: 380, y: 170, width: 140, height: 36, fontSize: 18, rotation: 0 },
+      ];
+    } else if (name === 'Communication Board') {
+      news = [
+        { id: base, type: 'text', content: 'I want...', x: 220, y: 90, width: 200, height: 40, fontSize: 22, color: '#0f766e', fontWeight: 'bold', rotation: 0 },
+        { id: base + 1, type: 'text', content: '🍎 Food', x: 140, y: 160, width: 140, height: 40, fontSize: 18, rotation: 0 },
+        { id: base + 2, type: 'text', content: '🚽 Bathroom', x: 320, y: 160, width: 140, height: 40, fontSize: 18, rotation: 0 },
+        { id: base + 3, type: 'text', content: '💧 Drink', x: 140, y: 220, width: 140, height: 40, fontSize: 18, rotation: 0 },
+        { id: base + 4, type: 'text', content: '🛑 Break', x: 320, y: 220, width: 140, height: 40, fontSize: 18, rotation: 0 },
+      ];
+    }
+
+    pushHistory([...items, ...news]);
+  };
+
+  // ---------- Mouse handlers ----------
+  const onMouseDownItem = (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    const item = items.find(i => i.id === id);
+    if (!item || item.locked) return;
+    setSelectedId(id);
+    setDraggingId(id);
+    setOffset({ x: e.clientX - item.x, y: e.clientY - item.y });
+  };
+
+  const onMouseDownHandle = (e: React.MouseEvent, id: number, corner: string) => {
+    e.stopPropagation();
+    setResizing({ id, corner });
+    setSelectedId(id);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (draggingId !== null) {
+      let x = e.clientX - offset.x;
+      let y = e.clientY - offset.y;
+      if (snap) {
+        x = Math.round(x / grid) * grid;
+        y = Math.round(y / grid) * grid;
+      }
+      setItems(items.map(i => (i.id === draggingId ? { ...i, x, y } : i)));
+    }
+
+    if (resizing) {
+      const item = items.find(i => i.id === resizing.id);
+      if (!item) return;
+      let { x, y, width, height } = item;
+      const dx = e.clientX - (item.x + (resizing.corner.includes('e') ? width : 0));
+      const dy = e.clientY - (item.y + (resizing.corner.includes('s') ? height : 0));
+
+      if (resizing.corner.includes('e')) width = Math.max(40, width + dx);
+      if (resizing.corner.includes('s')) height = Math.max(30, height + dy);
+      if (resizing.corner.includes('w')) {
+        const newW = Math.max(40, width - dx);
+        x = x + (width - newW);
+        width = newW;
+      }
+      if (resizing.corner.includes('n')) {
+        const newH = Math.max(30, height - dy);
+        y = y + (height - newH);
+        height = newH;
+      }
+      setItems(items.map(i => (i.id === resizing.id ? { ...i, x, y, width, height } : i)));
+    }
+  };
+
+  const onMouseUp = () => {
+    if (draggingId || resizing) commit();
+    setDraggingId(null);
+    setResizing(null);
+    setRotating(null);
+  };
+
+  // ---------- Layers helpers ----------
+  const bringForward = () => {
+    if (!selectedId) return;
+    const idx = items.findIndex(i => i.id === selectedId);
+    if (idx < items.length - 1) {
+      const next = [...items];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      pushHistory(next);
+    }
+  };
+
+  const sendBackward = () => {
+    if (!selectedId) return;
+    const idx = items.findIndex(i => i.id === selectedId);
+    if (idx > 0) {
+      const next = [...items];
+      [next[idx], next[idx - 1]] = [next[idx - 1], next[idx]];
+      pushHistory(next);
+    }
+  };
+
+  const toggleLock = () => {
+    if (!selected) return;
+    updateItem(selected.id, { locked: !selected.locked });
+    commit();
+  };
+
+  const toggleHide = () => {
+    if (!selected) return;
+    updateItem(selected.id, { hidden: !selected.hidden });
+    commit();
+  };
+
+  // ---------- Alignment ----------
+  const align = (type: string) => {
+    if (!selected) return;
+    const canvasW = 900;
+    const canvasH = 650;
+    let changes: Partial<CanvasItem> = {};
+    if (type === 'left') changes.x = 40;
+    if (type === 'center') changes.x = (canvasW - selected.width) / 2;
+    if (type === 'right') changes.x = canvasW - selected.width - 40;
+    if (type === 'top') changes.y = 40;
+    if (type === 'middle') changes.y = (canvasH - selected.height) / 2;
+    if (type === 'bottom') changes.y = canvasH - selected.height - 40;
+    updateItem(selected.id, changes);
+    commit();
+  };
+
+  // ---------- Export ----------
+  const exportCanvas = async (format: 'png' | 'jpg') => {
+    const el = document.getElementById('canvas');
+    if (!el) return;
+    const canvas = await html2canvas(el, { scale: 2 });
+    const link = document.createElement('a');
+    link.download = `applestem.${format}`;
+    link.href = canvas.toDataURL(`image/${format}`);
+    link.click();
   };
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-50 font-sans">
-      <Toaster position="top-center" richColors />
+    <div className="flex h-screen bg-slate-100 overflow-hidden" onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
+      {/* Left Toolbar */}
+      <div className="w-56 bg-white border-r flex flex-col">
+        <div className="p-4 border-b">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-teal-700 rounded-lg flex items-center justify-center text-white text-xl">🍎</div>
+            <span className="font-bold text-teal-800 text-lg">AppleStem</span>
+          </div>
+        </div>
 
-      <header className="h-16 bg-white border-b flex items-center px-8 gap-4 shadow-sm">
-        <Link href="/" className="flex items-center gap-3">
-          <span className="text-3xl">🍎</span>
-          <span className="font-bold text-xl tracking-tight">AppleStem</span>
-        </Link>
-        <input defaultValue="My Visual Schedule" className="bg-white border border-slate-200 focus:border-emerald-400 rounded-2xl px-4 py-1.5 text-sm w-80 outline-none" />
-        <div className="flex items-center gap-2">
-          <button onClick={() => setTool('draw')} className={`px-4 py-1.5 rounded-2xl text-sm border flex items-center gap-1.5 ${tool === 'draw' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-slate-200'}`}><Square size={16} /> Draw Box</button>
-          <button onClick={() => addElement('text')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">+ Text</button>
-          <button onClick={() => addElement('rectangle')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">□ Box</button>
-          <label className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm cursor-pointer flex items-center gap-1.5">
-            <ImageIcon size={16} /> Images
-            <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+        <div className="p-3 space-y-2 border-b">
+          <button onClick={addText} className="w-full py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-sm font-medium">
+            + Text
+          </button>
+          <label className="w-full py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-sm font-medium flex items-center justify-center cursor-pointer">
+            + Photo
+            <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
           </label>
-          <button onClick={() => toast('Symbol library opened (50+ open-source style)')} className="px-4 py-1.5 border border-slate-200 rounded-2xl text-sm">Symbols (50+)</button>
         </div>
-        <div className="flex-1" />
-        <div className="flex items-center gap-2">
-          <button onClick={() => setZoom(Math.max(0.5, zoom - 0.1))} className="p-2 hover:bg-zinc-100 rounded-xl"><ZoomOut size={18} /></button>
-          <span className="text-xs w-11 text-center tabular-nums font-mono">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(Math.min(3, zoom + 0.1))} className="p-2 hover:bg-zinc-100 rounded-xl"><ZoomIn size={18} /></button>
-          <button onClick={() => setSnapToGrid(!snapToGrid)} className={`px-3 py-1 rounded-xl text-xs border ${snapToGrid ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'border-slate-200'}`}>Snap {snapToGrid ? 'ON' : 'OFF'}</button>
-          <button onClick={() => setShowTutorial(true)} className="flex items-center gap-1.5 px-4 py-1.5 border border-emerald-200 text-emerald-700 rounded-2xl text-sm"><BookOpen size={16} /> Tutorial</button>
-        </div>
-        <button onClick={exportProject} className="px-5 py-1.5 border border-slate-200 rounded-2xl text-sm">Export</button>
-        <button onClick={() => setShowFeedback(true)} className="flex items-center gap-1.5 px-4 py-1.5 border border-slate-200 rounded-2xl text-sm"><MessageCircle size={16} /> Feedback</button>
-        <button onClick={() => toast.success('Saved to Supabase + deployed')} className="px-6 py-1.5 bg-emerald-600 text-white rounded-2xl text-sm font-medium">Save & Live</button>
-      </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-72 border-r bg-white p-6 overflow-y-auto">
-          <div className="mb-6">
-            <div className="text-xs font-semibold tracking-widest text-emerald-600 mb-2">TEMPLATES (6)</div>
-            <div className="space-y-2">
-              {TEMPLATES.map(t => (
-                <button key={t.id} onClick={() => loadTemplate(t.id)} className="w-full flex gap-3 p-3 bg-white hover:bg-emerald-50 border border-slate-100 rounded-2xl text-left transition-colors">
-                  <div className="text-3xl">{t.preview}</div><div className="text-sm font-medium pt-1">{t.name}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs font-semibold tracking-widest text-emerald-600 mb-2">SYMBOLS (50+ open-source style) — Click to add</div>
-            <div className="grid grid-cols-6 gap-1.5">
-              {SYMBOLS.map((s, i) => (
-                <button key={i} onClick={() => addElement('symbol', { content: s, width: 70, height: 70 })} className="text-3xl p-3 hover:bg-zinc-100 active:bg-zinc-200 rounded-2xl transition-colors flex items-center justify-center">
-                  {s}
-                </button>
-              ))}
-            </div>
+        <div className="p-3 border-b">
+          <div className="text-xs font-semibold text-slate-500 mb-2">TEMPLATES</div>
+          <div className="space-y-1">
+            {['Visual Schedule', 'First-Then', 'Communication Board'].map(t => (
+              <button key={t} onClick={() => loadTemplate(t)} className="w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-teal-50">
+                {t}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center bg-zinc-100 p-8 overflow-auto" onClick={handleCanvasClick}>
-          <div ref={canvasRef} className="relative bg-white shadow-2xl border border-zinc-200 overflow-hidden rounded-3xl" style={{ width: 680, height: 880 }}>
-            <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)', backgroundSize: '30px 30px', opacity: 0.55 }} />
-            {elements.sort((a,b) => a.zIndex - b.zIndex).map(el => {
-              const isSel = selectedId === el.id;
-              const sc = zoom;
-              return (
-                <div key={el.id} className={`absolute flex items-center justify-center cursor-move transition-all ${isSel ? 'ring-2 ring-emerald-500 ring-offset-2' : ''}`} style={{ left: el.x * sc, top: el.y * sc, width: el.width * sc, height: el.height * sc, opacity: el.opacity, zIndex: el.zIndex, fontSize: el.type === 'text' ? `${(el.fontSize || 20) * sc}px` : undefined, color: el.color, fontFamily: el.fontFamily, fontWeight: el.isBold ? 'bold' : 'normal', fontStyle: el.isItalic ? 'italic' : 'normal', textDecoration: el.isUnderlined ? 'underline' : 'none' }} onMouseDown={(e) => handleElementMouseDown(e, el.id)} onDoubleClick={() => { if (el.type === 'text') { const v = prompt('Edit text (use Enter for new lines)', el.content); if (v !== null) updateElement(el.id, { content: v }); } }}>
-                  {el.type === 'text' && <div className="px-3 w-full text-center break-words select-none whitespace-pre-wrap">{el.content}</div>}
-                  {el.type === 'symbol' && <div className="text-6xl select-none drop-shadow-sm">{el.content}</div>}
-                  {el.type === 'rectangle' && <div className="w-full h-full border transition-all" style={{ backgroundColor: el.color, borderColor: el.borderColor, borderWidth: `${(el.borderWidth || 2) * sc}px`, borderRadius: `${(el.borderRadius || 8) * sc}px` }} />}
-                  {el.type === 'image' && <img src={el.content} className="w-full h-full object-cover rounded-xl" alt="" />}
-                </div>
-              );
-            })}
-            {selectedElement && (
-              <>
-                {['nw','ne','sw','se'].map(h => (
-                  <div key={h} onMouseDown={(e) => startResize(e, selectedElement.id, h)} className="absolute w-3.5 h-3.5 bg-white border-2 border-emerald-500 rounded-full cursor-nwse-resize z-[60] shadow-sm" style={{ left: (h.includes('w') ? selectedElement.x * zoom - 7 : (selectedElement.x + selectedElement.width) * zoom - 7), top: (h.includes('n') ? selectedElement.y * zoom - 7 : (selectedElement.y + selectedElement.height) * zoom - 7) }} />
-                ))}
-                <ContextToolbar />
-              </>
-            )}
+        <div className="p-3 mt-auto space-y-2 border-t">
+          <div className="flex gap-2">
+            <button onClick={undo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Undo</button>
+            <button onClick={redo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Redo</button>
           </div>
-        </div>
-
-        <div className="w-80 border-l bg-white p-6 overflow-y-auto">
-          <div className="text-xs uppercase tracking-[1.5px] text-emerald-600 font-semibold mb-3">Properties</div>
-          {!selectedElement ? <div className="text-sm text-zinc-400 py-8 text-center">Select an element</div> : (
-            <div className="space-y-5">
-              <div className="flex gap-2">
-                <button onClick={duplicateSelected} className="flex-1 py-2 text-sm border border-emerald-200 text-emerald-700 rounded-2xl">Duplicate</button>
-                <button onClick={deleteSelected} className="flex-1 py-2 text-sm border border-red-200 text-red-600 rounded-2xl">Delete</button>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={sendBackward} className="flex-1 py-1.5 text-xs border rounded-xl">Send Back</button>
-                <button onClick={bringForward} className="flex-1 py-1.5 text-xs border rounded-xl">Bring Forward</button>
-              </div>
-              <div>
-                <div className="text-xs text-zinc-500 mb-1">Alignment</div>
-                <div className="flex gap-2">
-                  <button onClick={() => align('left')} className="flex-1 py-1.5 text-xs border rounded-xl flex justify-center"><AlignLeft size={15} /></button>
-                  <button onClick={() => align('center')} className="flex-1 py-1.5 text-xs border rounded-xl flex justify-center"><AlignCenter size={15} /></button>
-                  <button onClick={() => align('right')} className="flex-1 py-1.5 text-xs border rounded-xl flex justify-center"><AlignRight size={15} /></button>
-                </div>
-              </div>
-              {selectedElement.type === 'text' && (
-                <>
-                  <div><div className="text-xs text-zinc-500 mb-1">Text Color</div><input type="color" value={selectedElement.color || '#1e2937'} onChange={e => updateElement(selectedId!, { color: e.target.value })} className="w-full h-9 rounded-xl border p-1" /></div>
-                  <div><div className="text-xs text-zinc-500 mb-1">Font Size</div><input type="number" value={selectedElement.fontSize} onChange={e => updateElement(selectedId!, { fontSize: parseInt(e.target.value) || 10 })} className="w-full border rounded-xl px-3 py-2 text-sm" /></div>
-                  <div className="flex gap-2">
-                    <button onClick={() => updateElement(selectedId!, { isBold: !selectedElement.isBold })} className={`flex-1 py-1.5 text-sm rounded-xl border ${selectedElement.isBold ? 'bg-emerald-600 text-white' : ''}`}>Bold</button>
-                    <button onClick={() => updateElement(selectedId!, { isItalic: !selectedElement.isItalic })} className={`flex-1 py-1.5 text-sm rounded-xl border ${selectedElement.isItalic ? 'bg-emerald-600 text-white' : ''}`}>Italic</button>
-                    <button onClick={() => updateElement(selectedId!, { isUnderlined: !selectedElement.isUnderlined })} className={`flex-1 py-1.5 text-sm rounded-xl border ${selectedElement.isUnderlined ? 'bg-emerald-600 text-white' : ''}`}>Underline</button>
-                  </div>
-                </>
-              )}
-              {selectedElement.type === 'rectangle' && (
-                <>
-                  <div><div className="text-xs text-zinc-500 mb-1">Fill</div><input type="color" value={selectedElement.color || '#fefce8'} onChange={e => updateElement(selectedId!, { color: e.target.value })} className="w-full h-9 rounded-xl border p-1" /></div>
-                  <div><div className="text-xs text-zinc-500 mb-1">Border</div><input type="color" value={selectedElement.borderColor || '#166534'} onChange={e => updateElement(selectedId!, { borderColor: e.target.value })} className="w-full h-9 rounded-xl border p-1" /></div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Layers Panel */}
-          <div className="mt-8">
-            <div className="text-xs uppercase tracking-[1.5px] text-emerald-600 font-semibold mb-3">Layers</div>
-            <div className="space-y-1 text-sm">
-              {elements.sort((a,b) => b.zIndex - a.zIndex).map(el => (
-                <div key={el.id} onClick={() => setSelectedId(el.id)} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer ${selectedId === el.id ? 'bg-emerald-50' : 'hover:bg-zinc-50'}`}>
-                  <span className="truncate">{el.type} • {el.content.slice(0,20)}</span>
-                  <div className="flex gap-1">
-                    <button onClick={(e) => { e.stopPropagation(); updateElement(el.id, { zIndex: el.zIndex + 1 }); }}><ArrowUp size={14} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <button onClick={() => exportCanvas('png')} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm font-medium">
+            Export PNG
+          </button>
         </div>
       </div>
 
-      {/* Feedback Modal */}
-      {showFeedback && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowFeedback(false)}>
-          <div className="bg-white rounded-3xl p-8 w-full max-w-md" onClick={e => e.stopPropagation()}>
-            <div className="font-semibold text-xl mb-4">Give Feedback</div>
-            <textarea value={feedbackMsg} onChange={e => setFeedbackMsg(e.target.value)} placeholder="What works well? What could be better?" className="w-full border rounded-2xl p-4 h-32 mb-4" />
-            <input value={feedbackContact} onChange={e => setFeedbackContact(e.target.value)} placeholder="Email (optional)" className="w-full border rounded-2xl px-4 py-2 mb-6" />
-            <div className="flex gap-3"><button onClick={() => setShowFeedback(false)} className="flex-1 py-3 border rounded-2xl">Cancel</button><button onClick={submitFeedback} className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl">Send</button></div>
-          </div>
-        </div>
-      )}
+      {/* Canvas */}
+      <div className="flex-1 flex items-center justify-center p-6 overflow-auto bg-slate-200" onClick={() => setSelectedId(null)}>
+        <div
+          id="canvas"
+          className="relative bg-white shadow-xl rounded-2xl"
+          style={{
+            width: 900,
+            height: 650,
+            backgroundColor: canvasBg,
+            backgroundImage: snap ? 'linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px)' : 'none',
+            backgroundSize: `${grid}px ${grid}px`,
+          }}
+        >
+          {items.filter(i => !i.hidden).map(item => (
+            <div
+              key={item.id}
+              className={`absolute select-none ${selectedId === item.id ? 'z-20' : 'z-10'}`}
+              style={{
+                left: item.x,
+                top: item.y,
+                width: item.width,
+                height: item.height,
+                transform: `rotate(${item.rotation || 0}deg)`,
+                border: selectedId === item.id ? '2px solid #0d9488' : '1px solid transparent',
+              }}
+              onMouseDown={(e) => onMouseDownItem(e, item.id)}
+              onDoubleClick={() => {
+                if (item.type === 'text' && !item.locked) {
+                  const val = prompt('Edit text', item.content);
+                  if (val !== null) {
+                    updateItem(item.id, { content: val });
+                    commit();
+                  }
+                }
+              }}
+            >
+              {item.type === 'text' ? (
+                <div
+                  style={{
+                    fontSize: item.fontSize,
+                    color: item.color,
+                    fontFamily: item.fontFamily,
+                    fontWeight: item.fontWeight,
+                    fontStyle: item.fontStyle,
+                    textAlign: item.textAlign,
+                    width: '100%',
+                    height: '100%',
+                    padding: 4,
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {item.content}
+                </div>
+              ) : (
+                <img src={item.src} alt="" className="w-full h-full object-cover rounded" draggable={false} />
+              )}
 
-      {/* Tutorial Modal */}
-      {showTutorial && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowTutorial(false)}>
-          <div className="bg-white rounded-3xl p-8 w-full max-w-2xl max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
-            <div className="font-semibold text-2xl mb-6">How to use AppleStem</div>
-            <div className="space-y-6 text-sm">
-              <div><strong>1. Start with a template</strong> — Click any template on the left to load a ready-to-edit board.</div>
-              <div><strong>2. Add symbols or images</strong> — Click symbols from the grid or upload your own images.</div>
-              <div><strong>3. Drag & resize</strong> — Drag elements on the canvas. Use the 4 corner dots to resize (text scales automatically).</div>
-              <div><strong>4. Edit text</strong> — Double-click any text box to edit. Press Enter for new lines.</div>
-              <div><strong>5. Quick actions</strong> — When an element is selected, use the floating toolbar above it for Duplicate / Delete / Bring Forward.</div>
-              <div><strong>6. Align & Layers</strong> — Use the alignment buttons or Layers list on the right.</div>
-              <div><strong>7. Export</strong> — Click Export to download a JSON backup (full PNG/PDF coming soon).</div>
+              {/* Resize handles */}
+              {selectedId === item.id && !item.locked && (
+                <>
+                  {['nw', 'ne', 'sw', 'se'].map(corner => (
+                    <div
+                      key={corner}
+                      className="absolute w-3 h-3 bg-teal-600 border border-white rounded-sm cursor-pointer"
+                      style={{
+                        left: corner.includes('w') ? -6 : undefined,
+                        right: corner.includes('e') ? -6 : undefined,
+                        top: corner.includes('n') ? -6 : undefined,
+                        bottom: corner.includes('s') ? -6 : undefined,
+                      }}
+                      onMouseDown={(e) => onMouseDownHandle(e, item.id, corner)}
+                    />
+                  ))}
+                </>
+              )}
             </div>
-            <button onClick={() => setShowTutorial(false)} className="mt-8 w-full py-3 bg-emerald-600 text-white rounded-2xl">Got it — Start Creating</button>
-          </div>
+          ))}
         </div>
-      )}
+      </div>
+
+      {/* Right Panel - Layers + Properties */}
+      <div className="w-64 bg-white border-l flex flex-col">
+        <div className="p-4 border-b">
+          <div className="font-semibold text-slate-800">Layers</div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {[...items].reverse().map(item => (
+            <div
+              key={item.id}
+              onClick={() => setSelectedId(item.id)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer mb-1 ${
+                selectedId === item.id ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
+              }`}
+            >
+              <span className="truncate flex-1">
+                {item.type === 'text' ? item.content?.slice(0, 18) || 'Text' : 'Photo'}
+              </span>
+              {item.locked && <span className="text-xs">🔒</span>}
+              {item.hidden && <span className="text-xs">👁️</span>}
+            </div>
+          ))}
+        </div>
+
+        {selected && (
+          <div className="p-4 border-t space-y-3">
+            <div className="text-xs font-semibold text-slate-500">PROPERTIES</div>
+
+            {selected.type === 'text' && (
+              <>
+                <div>
+                  <label className="text-xs text-slate-500">Size</label>
+                  <input
+                    type="number"
+                    value={selected.fontSize || 22}
+                    onChange={(e) => updateItem(selected.id, { fontSize: +e.target.value })}
+                    onBlur={commit}
+                    className="w-full border rounded-lg px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500">Color</label>
+                  <input
+                    type="color"
+                    value={selected.color || '#0f172a'}
+                    onChange={(e) => updateItem(selected.id, { color: e.target.value })}
+                    onBlur={commit}
+                    className="w-full h-9 rounded-lg"
+                  />
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      updateItem(selected.id, { fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' });
+                      commit();
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg text-sm border ${selected.fontWeight === 'bold' ? 'bg-teal-700 text-white' : ''}`}
+                  >
+                    B
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateItem(selected.id, { fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' });
+                      commit();
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg text-sm border ${selected.fontStyle === 'italic' ? 'bg-teal-700 text-white' : ''}`}
+                  >
+                    I
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div className="grid grid-cols-3 gap-1">
+              {['left', 'center', 'right', 'top', 'middle', 'bottom'].map(a => (
+                <button key={a} onClick={() => align(a)} className="py-1.5 text-xs border rounded-lg hover:bg-slate-50 capitalize">
+                  {a}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={bringForward} className="flex-1 py-1.5 text-xs border rounded-lg">↑ Forward</button>
+              <button onClick={sendBackward} className="flex-1 py-1.5 text-xs border rounded-lg">↓ Back</button>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={toggleLock} className="flex-1 py-1.5 text-xs border rounded-lg">
+                {selected.locked ? 'Unlock' : 'Lock'}
+              </button>
+              <button onClick={toggleHide} className="flex-1 py-1.5 text-xs border rounded-lg">
+                {selected.hidden ? 'Show' : 'Hide'}
+              </button>
+            </div>
+
+            <button onClick={deleteSelected} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm">
+              Delete
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
