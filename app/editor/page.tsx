@@ -57,28 +57,36 @@ export default function Editor() {
   const clearTempGuides = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    tempGuidesRef.current.forEach(g => canvas.remove(g));
+    tempGuidesRef.current.forEach(g => { try { canvas.remove(g); } catch {} });
     tempGuidesRef.current = [];
+    canvas.getObjects().forEach(o => {
+      if ((o as any).__isTempGuide) canvas.remove(o);
+    });
     canvas.renderAll();
   };
 
   const drawGrid = () => {
     const canvas = fabricRef.current;
-    if (!canvas || !showGrid) return;
-    guidesRef.current.forEach(g => canvas.remove(g));
+    if (!canvas) return;
+    guidesRef.current.forEach(g => { try { canvas.remove(g); } catch {} });
     guidesRef.current = [];
+    if (!showGrid) { canvas.renderAll(); return; }
     const gridSize = 40;
-    for (let i = 0; i < (canvas.width || 800) / gridSize; i++) {
-      const line = new Line([i * gridSize, 0, i * gridSize, canvas.height || 600], {
-        stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+    const w = canvas.width || 800;
+    const h = canvas.height || 600;
+    for (let i = 0; i < w / gridSize; i++) {
+      const line = new Line([i * gridSize, 0, i * gridSize, h], {
+        stroke: '#cbd5e1', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
       });
+      (line as any).__isGrid = true;
       canvas.add(line);
       guidesRef.current.push(line);
     }
-    for (let i = 0; i < (canvas.height || 600) / gridSize; i++) {
-      const line = new Line([0, i * gridSize, canvas.width || 800, i * gridSize], {
-        stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+    for (let i = 0; i < h / gridSize; i++) {
+      const line = new Line([0, i * gridSize, w, i * gridSize], {
+        stroke: '#cbd5e1', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
       });
+      (line as any).__isGrid = true;
       canvas.add(line);
       guidesRef.current.push(line);
     }
@@ -148,13 +156,14 @@ export default function Editor() {
       if (showGrid) drawGrid();
     }
 
+    canvas.on('object:moving', clearTempGuides);
     canvas.on('object:modified', () => { clearTempGuides(); pushHistory(); });
-    canvas.on('object:added', (e) => { if (!e.target?.excludeFromExport) pushHistory(); });
+    canvas.on('object:added', (e) => { if (!e.target?.excludeFromExport && !(e.target as any).__isGrid) pushHistory(); });
     canvas.on('object:removed', pushHistory);
 
-    canvas.on('selection:created', (e) => { setSelected(e.selected?.[0] || null); refreshObjects(); });
-    canvas.on('selection:updated', (e) => { setSelected(e.selected?.[0] || null); refreshObjects(); });
-    canvas.on('selection:cleared', () => { setSelected(null); clearTempGuides(); refreshObjects(); });
+    canvas.on('selection:created', (e) => { clearTempGuides(); setSelected(e.selected?.[0] || null); refreshObjects(); });
+    canvas.on('selection:updated', (e) => { clearTempGuides(); setSelected(e.selected?.[0] || null); refreshObjects(); });
+    canvas.on('selection:cleared', () => { clearTempGuides(); setSelected(null); refreshObjects(); });
 
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -183,6 +192,7 @@ export default function Editor() {
       if (meta && e.shiftKey && e.key === 'G') { e.preventDefault(); ungroup(); }
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && canvas.getActiveObject()) {
         e.preventDefault();
+        clearTempGuides();
         const obj = canvas.getActiveObject()!;
         const step = e.shiftKey ? 10 : 1;
         if (e.key === 'ArrowUp') obj.set({ top: (obj.top || 0) - step });
@@ -584,16 +594,16 @@ export default function Editor() {
           onDrop={(e) => !isMobile && depth === 0 && onDrop(e, idx)}
           onClick={() => selectObject(obj)}
           onDoubleClick={() => isGroup ? enterGroup(obj) : startRename(obj)}
-          className={`group px-2 py-1.5 text-sm rounded-lg cursor-pointer mb-0.5 flex items-center gap-1.5 ${selected === obj ? 'bg-teal-50 text-teal-900' : 'hover:bg-slate-50 text-slate-900'}`}
+          className={`group px-2 py-1.5 text-sm rounded-lg cursor-pointer mb-0.5 flex items-center gap-1.5 font-medium ${selected === obj ? 'bg-teal-100 text-teal-900' : 'hover:bg-slate-100 text-slate-900'}`}
         >
           {isGroup ? (
-            <button onClick={(e) => { e.stopPropagation(); toggleExpand(obj); }} className="w-4 h-4 text-xs flex items-center justify-center hover:bg-slate-200 rounded">
+            <button onClick={(e) => { e.stopPropagation(); toggleExpand(obj); }} className="w-4 h-4 text-xs flex items-center justify-center hover:bg-slate-200 rounded text-slate-900">
               {isExpanded ? '▼' : '▶'}
             </button>
           ) : (
             <span className="w-4" />
           )}
-          {!isMobile && depth === 0 && <span className="text-slate-400 cursor-grab text-xs">⠇</span>}
+          {!isMobile && depth === 0 && <span className="text-slate-600 cursor-grab text-xs">⠇</span>}
           {renaming === obj ? (
             <input
               autoFocus
@@ -601,21 +611,21 @@ export default function Editor() {
               onChange={(e) => setRenameValue(e.target.value)}
               onBlur={commitRename}
               onKeyDown={(e) => e.key === 'Enter' && commitRename()}
-              className="flex-1 border border-teal-300 rounded px-1 py-0.5 text-sm"
+              className="flex-1 border border-teal-400 rounded px-1 py-0.5 text-sm text-slate-900"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="flex-1 truncate">{getLabel(obj)}</span>
+            <span className="flex-1 truncate text-slate-900">{getLabel(obj)}</span>
           )}
-          {isGroup && <span className="text-[10px] text-slate-500">{children.length}</span>}
+          {isGroup && <span className="text-[10px] text-slate-700 font-medium">{children.length}</span>}
           <div className="flex gap-0.5">
-            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.max(0, idx - 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded" title="Move up">↑</button>
-            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.min(objects.length - 1, idx + 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded" title="Move down">↓</button>
+            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.max(0, idx - 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded text-slate-900" title="Move up">↑</button>
+            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.min(objects.length - 1, idx + 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded text-slate-900" title="Move down">↓</button>
           </div>
           <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded" title="Toggle visibility">
             {obj.visible === false ? '🙈' : '👁'}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${isLocked ? 'text-amber-600' : ''}`} title={isLocked ? 'Unlock' : 'Lock'}>
+          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${isLocked ? 'text-amber-700' : ''}`} title={isLocked ? 'Unlock' : 'Lock'}>
             {isLocked ? '🔒' : '🔓'}
           </button>
         </div>
@@ -625,9 +635,9 @@ export default function Editor() {
   };
 
   return (
-    <div className="flex h-screen bg-[#f4f5f7] overflow-hidden font-sans text-slate-900 flex-col md:flex-row">
+    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans text-slate-900 flex-col md:flex-row">
       {!isMobile && (
-        <div className="w-16 bg-white border-r border-slate-200 flex flex-col items-center py-3 shrink-0">
+        <div className="w-16 bg-white border-r border-slate-300 flex flex-col items-center py-3 shrink-0">
           <div className="text-2xl mb-4">🍎</div>
           {[
             { id: 'text', icon: 'T', label: 'Text' },
@@ -638,40 +648,38 @@ export default function Editor() {
             <button
               key={item.id}
               onClick={() => setActivePanel(activePanel === item.id ? null : item.id as any)}
-              className={`w-12 h-12 flex flex-col items-center justify-center rounded-lg mb-1 text-xs font-medium transition-colors ${
-                activePanel === item.id ? 'bg-teal-50 text-teal-700' : 'text-slate-700 hover:bg-slate-50'
-              }`}
+              className={`w-12 h-12 flex flex-col items-center justify-center rounded-lg mb-1 text-xs font-semibold transition-colors ${activePanel === item.id ? 'bg-teal-100 text-teal-800' : 'text-slate-900 hover:bg-slate-100'}`}
             >
               <span className="text-lg leading-none">{item.icon}</span>
-              <span className="text-[10px] mt-0.5">{item.label}</span>
+              <span className="text-[10px] mt-0.5 font-medium">{item.label}</span>
             </button>
           ))}
           <div className="mt-auto flex flex-col gap-1">
-            <button onClick={undo} className="w-10 h-10 text-slate-700 hover:bg-slate-50 rounded-lg text-sm">↺</button>
-            <button onClick={redo} className="w-10 h-10 text-slate-700 hover:bg-slate-50 rounded-lg text-sm">↻</button>
+            <button onClick={undo} className="w-10 h-10 text-slate-900 hover:bg-slate-100 rounded-lg text-sm font-medium">↺</button>
+            <button onClick={redo} className="w-10 h-10 text-slate-900 hover:bg-slate-100 rounded-lg text-sm font-medium">↻</button>
           </div>
         </div>
       )}
 
       {activePanel && (
-        <div className={`${isMobile ? 'fixed inset-0 z-40 bg-white' : 'w-64'} bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto`}>
-          <div className="px-4 py-3 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
+        <div className={`${isMobile ? 'fixed inset-0 z-40 bg-white' : 'w-64'} bg-white border-r border-slate-300 flex flex-col shrink-0 overflow-y-auto`}>
+          <div className="px-4 py-3 border-b border-slate-300 font-bold text-slate-900 text-sm flex items-center justify-between">
             {activePanel === 'text' && 'Text'}
             {activePanel === 'shapes' && 'Shapes'}
             {activePanel === 'symbols' && 'Symbols'}
             {activePanel === 'templates' && 'Templates'}
-            <button onClick={() => setActivePanel(null)} className="text-slate-500 hover:text-slate-800 text-lg">✕</button>
+            <button onClick={() => setActivePanel(null)} className="text-slate-700 hover:text-slate-900 text-lg font-bold">✕</button>
           </div>
           <div className="p-4 space-y-3">
             {activePanel === 'text' && (
-              <button onClick={() => addText()} className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium">+ Add text</button>
+              <button onClick={() => addText()} className="w-full py-3 bg-teal-700 hover:bg-teal-800 text-white rounded-lg text-sm font-semibold">+ Add text</button>
             )}
             {activePanel === 'shapes' && (
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={addRect} className="py-3 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50">Rectangle</button>
-                <button onClick={addCircle} className="py-3 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50">Circle</button>
-                <button onClick={addTriangle} className="py-3 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50">Triangle</button>
-                <label className="py-3 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 flex items-center justify-center cursor-pointer">
+                <button onClick={addRect} className="py-3 border-2 border-slate-400 rounded-lg text-sm font-semibold text-slate-900 hover:bg-slate-100">Rectangle</button>
+                <button onClick={addCircle} className="py-3 border-2 border-slate-400 rounded-lg text-sm font-semibold text-slate-900 hover:bg-slate-100">Circle</button>
+                <button onClick={addTriangle} className="py-3 border-2 border-slate-400 rounded-lg text-sm font-semibold text-slate-900 hover:bg-slate-100">Triangle</button>
+                <label className="py-3 border-2 border-slate-400 rounded-lg text-sm font-semibold text-slate-900 hover:bg-slate-100 flex items-center justify-center cursor-pointer">
                   + Image
                   <input type="file" accept="image/*" className="hidden" onChange={addImage} />
                 </label>
@@ -680,27 +688,27 @@ export default function Editor() {
             {activePanel === 'symbols' && (
               <div className="grid grid-cols-4 gap-2">
                 {[['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']].map(([e, l]) => (
-                  <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-2xl border border-slate-300 rounded-lg hover:bg-teal-50" title={l}>{e}</button>
+                  <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-2xl border-2 border-slate-400 rounded-lg hover:bg-teal-50" title={l}>{e}</button>
                 ))}
               </div>
             )}
             {activePanel === 'templates' && (
               <div className="space-y-1">
                 {['Visual Schedule','First-Then','Communication Board','Token Board'].map(name => (
-                  <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-3 text-sm font-medium rounded-lg hover:bg-slate-50">{name}</button>
+                  <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-3 text-sm font-semibold text-slate-900 rounded-lg hover:bg-slate-100">{name}</button>
                 ))}
               </div>
             )}
-            <div className="pt-3 border-t border-slate-200">
-              <div className="text-xs font-semibold text-slate-800 mb-2">Page size</div>
+            <div className="pt-3 border-t border-slate-300">
+              <div className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide">Page size</div>
               <div className="grid grid-cols-2 gap-1 mb-3">
                 {[['Square',800,600],['Landscape',900,560],['Portrait',560,800],['A4',595,842]].map(([n,w,h]) => (
-                  <button key={n as string} onClick={() => setPage(w as number, h as number, n as string)} className={`py-2 text-xs border rounded font-medium ${pageSize.name === n ? 'bg-teal-50 border-teal-300 text-teal-800' : 'border-slate-300 hover:bg-slate-50'}`}>{n}</button>
+                  <button key={n as string} onClick={() => setPage(w as number, h as number, n as string)} className={`py-2 text-xs border-2 rounded font-semibold ${pageSize.name === n ? 'bg-teal-100 border-teal-500 text-teal-900' : 'border-slate-400 text-slate-900 hover:bg-slate-100'}`}>{n}</button>
                 ))}
               </div>
-              <div className="text-xs font-semibold text-slate-800 mb-2">Background</div>
-              <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-10 rounded-lg border border-slate-300 cursor-pointer" />
-              <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer">
+              <div className="text-xs font-bold text-slate-900 mb-2 uppercase tracking-wide">Background</div>
+              <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-10 rounded-lg border-2 border-slate-400 cursor-pointer" />
+              <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer font-medium text-slate-900">
                 <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
                 Show grid
               </label>
@@ -710,88 +718,88 @@ export default function Editor() {
       )}
 
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="h-12 md:h-14 bg-white border-b border-slate-200 flex items-center px-2 md:px-4 gap-1 md:gap-2 shrink-0 overflow-x-auto">
+        <div className="h-12 md:h-14 bg-white border-b border-slate-300 flex items-center px-2 md:px-4 gap-1 md:gap-2 shrink-0 overflow-x-auto">
           {editingGroup && (
-            <button onClick={exitGroup} className="px-2 py-1 text-xs md:text-sm font-medium text-teal-700 bg-teal-50 rounded-md hover:bg-teal-100 whitespace-nowrap">← Exit</button>
+            <button onClick={exitGroup} className="px-2 py-1 text-xs md:text-sm font-semibold text-teal-800 bg-teal-100 rounded-md hover:bg-teal-200 whitespace-nowrap">← Exit</button>
           )}
           {selected ? (
             <>
-              <button onClick={duplicateSelected} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md whitespace-nowrap">Dup</button>
-              <button onClick={deleteSelected} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Del</button>
-              <button onClick={() => toggleLock()} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md whitespace-nowrap">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
-              <div className="w-px h-5 bg-slate-200 mx-1 hidden md:block" />
-              <button onClick={bringToFront} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Front</button>
-              <button onClick={sendToBack} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Back</button>
+              <button onClick={duplicateSelected} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md whitespace-nowrap">Dup</button>
+              <button onClick={deleteSelected} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Del</button>
+              <button onClick={() => toggleLock()} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md whitespace-nowrap">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
+              <div className="w-px h-5 bg-slate-300 mx-1 hidden md:block" />
+              <button onClick={bringToFront} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Front</button>
+              <button onClick={sendToBack} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Back</button>
               {selected.type === 'i-text' && (
                 <>
-                  <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`px-2 py-1 text-xs md:text-sm font-bold rounded ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>B</button>
-                  <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`px-2 py-1 text-xs md:text-sm italic rounded ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>I</button>
+                  <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`px-2 py-1 text-xs md:text-sm font-bold rounded ${selected.fontWeight === 'bold' ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>B</button>
+                  <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`px-2 py-1 text-xs md:text-sm italic rounded ${selected.fontStyle === 'italic' ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>I</button>
                 </>
               )}
               {selected.type === 'group' && (
-                <button onClick={() => enterGroup(selected)} className="px-2 py-1 text-xs md:text-sm font-medium text-teal-700 hover:bg-teal-50 rounded-md">Enter</button>
+                <button onClick={() => enterGroup(selected)} className="px-2 py-1 text-xs md:text-sm font-semibold text-teal-800 hover:bg-teal-100 rounded-md">Enter</button>
               )}
             </>
           ) : (
-            <span className="text-xs md:text-sm text-slate-600">Select to edit</span>
+            <span className="text-xs md:text-sm font-medium text-slate-800">Select an object to edit</span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={exportPNG} className="px-3 py-1.5 bg-slate-900 text-white text-xs md:text-sm font-medium rounded-lg hover:bg-slate-800">Export</button>
+            <button onClick={exportPNG} className="px-3 py-1.5 bg-slate-900 text-white text-xs md:text-sm font-semibold rounded-lg hover:bg-slate-800">Export</button>
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center p-2 md:p-6 overflow-auto">
+        <div className="flex-1 flex items-center justify-center p-2 md:p-6 overflow-auto bg-slate-100">
           <div className="relative shadow-xl md:shadow-2xl rounded-lg max-w-full">
             <canvas ref={canvasEl} className="max-w-full h-auto" style={{ background: '#ffffff' }} />
             {selected && !isMobile && (
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white shadow-lg border border-slate-200 rounded-full px-2 py-1 z-10">
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white shadow-lg border-2 border-slate-300 rounded-full px-2 py-1 z-10">
                 <button onClick={duplicateSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Duplicate">⎘</button>
                 <button onClick={() => toggleLock()} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Lock">🔒</button>
-                <button onClick={deleteSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-red-50 text-red-600 rounded-full" title="Delete">🗑</button>
+                <button onClick={deleteSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-red-50 text-red-700 rounded-full" title="Delete">🗑</button>
               </div>
             )}
           </div>
         </div>
 
-        <div className="h-10 md:h-12 bg-white border-t border-slate-200 flex items-center px-3 gap-3 shrink-0">
+        <div className="h-10 md:h-12 bg-white border-t border-slate-300 flex items-center px-3 gap-3 shrink-0">
           <div className="flex items-center gap-1">
-            <button onClick={() => changeZoom(-0.1)} className="w-7 h-7 border border-slate-300 rounded hover:bg-slate-50 text-slate-800 text-sm">−</button>
-            <span className="text-xs md:text-sm font-medium w-10 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => changeZoom(0.1)} className="w-7 h-7 border border-slate-300 rounded hover:bg-slate-50 text-slate-800 text-sm">+</button>
+            <button onClick={() => changeZoom(-0.1)} className="w-7 h-7 border-2 border-slate-400 rounded hover:bg-slate-100 text-slate-900 font-medium text-sm">−</button>
+            <span className="text-xs md:text-sm font-semibold text-slate-900 w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => changeZoom(0.1)} className="w-7 h-7 border-2 border-slate-400 rounded hover:bg-slate-100 text-slate-900 font-medium text-sm">+</button>
           </div>
-          <div className="text-xs md:text-sm text-slate-600">{objects.length} obj</div>
+          <div className="text-xs md:text-sm font-medium text-slate-800">{objects.length} object{objects.length !== 1 ? 's' : ''}</div>
           {isMobile && (
-            <button onClick={() => setShowLayers(!showLayers)} className="ml-auto text-xs px-2 py-1 border rounded">Layers</button>
+            <button onClick={() => setShowLayers(!showLayers)} className="ml-auto text-xs px-2 py-1 border-2 border-slate-400 rounded font-medium text-slate-900">Layers</button>
           )}
         </div>
       </div>
 
       {(showLayers || !isMobile) && (
-        <div className={`${isMobile ? 'fixed bottom-0 left-0 right-0 h-64 z-30 shadow-2xl' : 'w-72'} bg-white border-l border-slate-200 flex flex-col shrink-0`}>
-          <div className="px-3 py-2 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
+        <div className={`${isMobile ? 'fixed bottom-0 left-0 right-0 h-64 z-30 shadow-2xl' : 'w-72'} bg-white border-l border-slate-300 flex flex-col shrink-0`}>
+          <div className="px-3 py-2 border-b border-slate-300 font-bold text-slate-900 text-sm flex items-center justify-between">
             Layers
-            {isMobile && <button onClick={() => setShowLayers(false)} className="text-slate-500">✕</button>}
+            {isMobile && <button onClick={() => setShowLayers(false)} className="text-slate-700 font-bold">✕</button>}
           </div>
           <div className="flex-1 overflow-y-auto p-2">
             {objects.length === 0 && (
-              <div className="text-sm text-slate-700 text-center py-6">No objects yet</div>
+              <div className="text-sm font-medium text-slate-800 text-center py-6">No objects yet</div>
             )}
             {objects.map((obj) => renderLayerItem(obj))}
           </div>
-          <div className="p-2 border-t border-slate-200 space-y-2 max-h-40 overflow-y-auto">
-            <div className="text-xs font-semibold text-slate-800">Align</div>
+          <div className="p-2 border-t border-slate-300 space-y-2 max-h-40 overflow-y-auto">
+            <div className="text-xs font-bold text-slate-900 uppercase tracking-wide">Align</div>
             <div className="grid grid-cols-3 gap-1">
               {['left','center','right','top','middle','bottom'].map(d => (
-                <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 capitalize font-medium">{d}</button>
+                <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 capitalize font-semibold text-slate-900">{d}</button>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-1">
-              <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Group</button>
-              <button onClick={ungroup} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Ungroup</button>
+              <button onClick={groupSelected} className="py-1.5 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 font-semibold text-slate-900">Group</button>
+              <button onClick={ungroup} className="py-1.5 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 font-semibold text-slate-900">Ungroup</button>
             </div>
             {selected && (
               <div>
-                <div className="text-xs font-semibold text-slate-800 mb-1">Opacity</div>
+                <div className="text-xs font-bold text-slate-900 mb-1 uppercase tracking-wide">Opacity</div>
                 <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full" />
               </div>
             )}
@@ -800,7 +808,7 @@ export default function Editor() {
       )}
 
       {isMobile && (
-        <div className="h-14 bg-white border-t border-slate-200 flex items-center justify-around shrink-0">
+        <div className="h-14 bg-white border-t border-slate-300 flex items-center justify-around shrink-0">
           {[
             { id: 'text', icon: 'T', label: 'Text' },
             { id: 'shapes', icon: '▢', label: 'Shapes' },
@@ -810,13 +818,13 @@ export default function Editor() {
             <button
               key={item.id}
               onClick={() => setActivePanel(activePanel === item.id ? null : item.id as any)}
-              className={`flex flex-col items-center justify-center text-xs ${activePanel === item.id ? 'text-teal-700' : 'text-slate-600'}`}
+              className={`flex flex-col items-center justify-center text-xs font-semibold ${activePanel === item.id ? 'text-teal-800' : 'text-slate-900'}`}
             >
               <span className="text-lg">{item.icon}</span>
               <span>{item.label}</span>
             </button>
           ))}
-          <button onClick={() => setShowLayers(!showLayers)} className="flex flex-col items-center justify-center text-xs text-slate-600">
+          <button onClick={() => setShowLayers(!showLayers)} className="flex flex-col items-center justify-center text-xs font-semibold text-slate-900">
             <span className="text-lg">☰</span>
             <span>Layers</span>
           </button>
