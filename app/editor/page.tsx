@@ -419,16 +419,16 @@ export default function Editor() {
       <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
           <span className="text-2xl">🍎</span>
-          <span className="font-semibold text-slate-800 text-lg tracking-tight">AppleStem</span>
+          <span className="font-semibold text-slate-900 text-lg tracking-tight">AppleStem</span>
         </div>
 
         <div className="p-4 space-y-2 border-b border-slate-100">
           <button onClick={() => addText()} className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors">+ Text</button>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={addRect} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">Rectangle</button>
-            <button onClick={addCircle} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">Circle</button>
-            <button onClick={addTriangle} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">Triangle</button>
-            <label className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center cursor-pointer">
+            <button onClick={addRect} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-800 hover:bg-slate-50 transition-colors">Rectangle</button>
+            <button onClick={addCircle} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-800 hover:bg-slate-50 transition-colors">Circle</button>
+            <button onClick={addTriangle} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-800 hover:bg-slate-50 transition-colors">Triangle</button>
+            <label className="py-2 border border-slate-200 rounded-lg text-sm text-slate-800 hover:bg-slate-50 transition-colors flex items-center justify-center cursor-pointer">
               + Image
               <input type="file" accept="image/*" className="hidden" onChange={addImage} />
             </label>
@@ -436,7 +436,7 @@ export default function Editor() {
         </div>
 
         <div className="p-4 border-b border-slate-100">
-          <div className="text-[11px] font-semibold text-slate-400 mb-3 uppercase tracking-wider">Symbols</div>
+          <div className="text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wider">Symbols</div>
           <div className="grid grid-cols-4 gap-2">
             {[['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']].map(([e, l]) => (
               <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-xl border border-slate-200 rounded-lg hover:bg-teal-50 hover:border-teal-200 transition-colors" title={l}>{e}</button>
@@ -445,18 +445,18 @@ export default function Editor() {
         </div>
 
         <div className="p-4 border-b border-slate-100">
-          <div className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wider">Templates</div>
+          <div className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wider">Templates</div>
           <div className="space-y-1">
             {['Visual Schedule','First-Then','Communication Board','Token Board'].map(name => (
-              <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-2 text-sm text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">{name}</button>
+              <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-2 text-sm text-slate-800 rounded-lg hover:bg-slate-50 transition-colors">{name}</button>
             ))}
           </div>
         </div>
 
         <div className="p-4 border-b border-slate-100 space-y-3">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Background</div>
+          <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Background</div>
           <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-10 rounded-lg border border-slate-200 cursor-pointer" />
-          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
             <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} className="rounded" />
             Show grid
           </label>
@@ -464,17 +464,17 @@ export default function Editor() {
 
         <div className="p-4 mt-auto space-y-2 border-t border-slate-100">
           <div className="flex gap-2">
-            <button onClick={() => changeZoom(-0.1)} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">−</button>
-            <div className="flex-1 py-2 text-sm text-center border border-slate-200 rounded-lg text-slate-600">{Math.round(zoom * 100)}%</div>
-            <button onClick={() => changeZoom(0.1)} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">+</button>
+            <button onClick={() => changeZoom(-0.1)} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-800">−</button>
+            <div className="flex-1 py-2 text-sm text-center border border-slate-200 rounded-lg text-slate-700">{Math.round(zoom * 100)}%</div>
+            <button onClick={() => changeZoom(0.1)} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-800">+</button>
           </div>
           <div className="flex gap-2">
-            <button onClick={undo} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">Undo</button>
-            <button onClick={redo} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">Redo</button>
+            <button onClick={undo} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-800">Undo</button>
+            <button onClick={redo} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-800">Redo</button>
           </div>
           <button onClick={deleteSelected} className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Delete</button>
           <button onClick={exportPNG} className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors">Export PNG</button>
-          <button onClick={saveToCloud} className="w-full py-2 text-sm border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50">Save to Cloud</button>
+          <button onClick={saveToCloud} className="w-full py-2 text-sm border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50">Save to Cloud</button>
         </div>
       </div>
 
@@ -485,17 +485,17 @@ export default function Editor() {
       </div>
 
       <div className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0">
-        <div className="px-4 py-3 border-b border-slate-100 font-medium text-slate-800">Layers</div>
+        <div className="px-4 py-3 border-b border-slate-100 font-medium text-slate-900">Layers</div>
         <div className="flex-1 overflow-y-auto p-3 max-h-48">
           {objects.length === 0 && (
-            <div className="text-sm text-slate-400 text-center py-6">No objects yet<br/><span className="text-xs">Add text or a shape to start</span></div>
+            <div className="text-sm text-slate-600 text-center py-6">No objects yet<br/><span className="text-xs text-slate-500">Add text or a shape to start</span></div>
           )}
           {objects.map((obj, i) => (
             <div
               key={i}
               onClick={() => selectObject(obj)}
               className={`px-3 py-2 text-sm rounded-lg cursor-pointer mb-1 flex items-center justify-between transition-colors ${
-                selected === obj ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50 text-slate-700'
+                selected === obj ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50 text-slate-800'
               }`}
             >
               <span className="truncate">
@@ -515,39 +515,39 @@ export default function Editor() {
         </div>
 
         <div className="p-4 border-t border-slate-100 space-y-3">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Align</div>
+          <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Align</div>
           <div className="grid grid-cols-3 gap-1.5">
             {['left','center','right','top','middle','bottom'].map(d => (
-              <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 capitalize text-slate-700">{d}</button>
+              <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 capitalize text-slate-800">{d}</button>
             ))}
           </div>
           <div className="grid grid-cols-2 gap-1.5">
-            <button onClick={() => distribute('horizontal')} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Dist H</button>
-            <button onClick={() => distribute('vertical')} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Dist V</button>
-            <button onClick={bringToFront} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Front</button>
-            <button onClick={sendToBack} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Back</button>
+            <button onClick={() => distribute('horizontal')} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Dist H</button>
+            <button onClick={() => distribute('vertical')} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Dist V</button>
+            <button onClick={bringToFront} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Front</button>
+            <button onClick={sendToBack} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Back</button>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
-            <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Group</button>
-            <button onClick={ungroup} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Ungroup</button>
+            <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Group</button>
+            <button onClick={ungroup} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Ungroup</button>
           </div>
         </div>
 
         <div className="p-4 border-t border-slate-100 space-y-3">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Properties</div>
+          <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Properties</div>
           {selected ? (
             <>
               <div className="grid grid-cols-2 gap-1.5">
-                <button onClick={toggleLock} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
-                <button onClick={toggleHide} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">{selected.visible === false ? 'Show' : 'Hide'}</button>
+                <button onClick={toggleLock} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
+                <button onClick={toggleHide} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">{selected.visible === false ? 'Show' : 'Hide'}</button>
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Fill</label>
+                <label className="text-xs text-slate-700 block mb-1 font-medium">Fill</label>
                 <input type="color" value={selected.fill || '#000000'} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-9 rounded-lg border border-slate-200 cursor-pointer" />
               </div>
               {selected.type === 'rect' && (
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">Corner radius</label>
+                  <label className="text-xs text-slate-700 block mb-1 font-medium">Corner radius</label>
                   <input
                     type="range"
                     min="0"
@@ -556,14 +556,14 @@ export default function Editor() {
                     onChange={(e) => updateSelected({ rx: Number(e.target.value), ry: Number(e.target.value) })}
                     className="w-full"
                   />
-                  <div className="text-xs text-slate-400 text-right">{selected.rx || 0}px</div>
+                  <div className="text-xs text-slate-600 text-right">{selected.rx || 0}px</div>
                 </div>
               )}
               {selected.type === 'i-text' && (
                 <>
                   <div>
-                    <label className="text-xs text-slate-500 block mb-1">Font</label>
-                    <select value={selected.fontFamily || 'system-ui'} onChange={(e) => updateSelected({ fontFamily: e.target.value })} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm">
+                    <label className="text-xs text-slate-700 block mb-1 font-medium">Font</label>
+                    <select value={selected.fontFamily || 'system-ui'} onChange={(e) => updateSelected({ fontFamily: e.target.value })} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-800">
                       <option value="system-ui">System</option>
                       <option value="Georgia, serif">Serif</option>
                       <option value="'Comic Sans MS', cursive">Friendly</option>
@@ -571,28 +571,28 @@ export default function Editor() {
                     </select>
                   </div>
                   <div className="grid grid-cols-3 gap-1">
-                    <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`py-1.5 text-xs border rounded-md font-bold ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'border-slate-200'}`}>B</button>
-                    <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`py-1.5 text-xs border rounded-md italic ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'border-slate-200'}`}>I</button>
-                    <button onClick={() => updateSelected({ underline: !selected.underline })} className={`py-1.5 text-xs border rounded-md underline ${selected.underline ? 'bg-slate-100' : 'border-slate-200'}`}>U</button>
+                    <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`py-1.5 text-xs border rounded-md font-bold text-slate-800 ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'border-slate-200'}`}>B</button>
+                    <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`py-1.5 text-xs border rounded-md italic text-slate-800 ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'border-slate-200'}`}>I</button>
+                    <button onClick={() => updateSelected({ underline: !selected.underline })} className={`py-1.5 text-xs border rounded-md underline text-slate-800 ${selected.underline ? 'bg-slate-100' : 'border-slate-200'}`}>U</button>
                   </div>
                   <div className="grid grid-cols-3 gap-1">
-                    <button onClick={() => updateSelected({ textAlign: 'left' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">Left</button>
-                    <button onClick={() => updateSelected({ textAlign: 'center' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">Center</button>
-                    <button onClick={() => updateSelected({ textAlign: 'right' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">Right</button>
+                    <button onClick={() => updateSelected({ textAlign: 'left' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Left</button>
+                    <button onClick={() => updateSelected({ textAlign: 'center' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Center</button>
+                    <button onClick={() => updateSelected({ textAlign: 'right' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-800">Right</button>
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500 block mb-1">Size</label>
-                    <input type="number" value={selected.fontSize || 24} onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
+                    <label className="text-xs text-slate-700 block mb-1 font-medium">Size</label>
+                    <input type="number" value={selected.fontSize || 24} onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-800" />
                   </div>
                 </>
               )}
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Opacity</label>
+                <label className="text-xs text-slate-700 block mb-1 font-medium">Opacity</label>
                 <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full" />
               </div>
             </>
           ) : (
-            <div className="text-sm text-slate-400 py-4 text-center">Select an object to edit</div>
+            <div className="text-sm text-slate-600 py-4 text-center">Select an object to edit</div>
           )}
         </div>
       </div>
