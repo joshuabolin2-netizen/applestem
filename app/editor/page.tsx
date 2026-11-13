@@ -1,12 +1,19 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Canvas, Rect, Circle, IText, FabricImage } from 'fabric';
+import { Canvas, Rect, Circle, Triangle, IText, FabricImage } from 'fabric';
 
 export default function Editor() {
   const canvasEl = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const [selected, setSelected] = useState<any>(null);
+  const [objects, setObjects] = useState<any[]>([]);
+
+  const refreshObjects = () => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    setObjects([...canvas.getObjects()].reverse());
+  };
 
   useEffect(() => {
     if (!canvasEl.current) return;
@@ -20,36 +27,48 @@ export default function Editor() {
 
     fabricRef.current = canvas;
 
-    // Load from localStorage if present
     const saved = localStorage.getItem('applestem-fabric');
     if (saved) {
-      canvas.loadFromJSON(saved).then(() => canvas.renderAll());
+      canvas.loadFromJSON(saved).then(() => {
+        canvas.renderAll();
+        refreshObjects();
+      });
     }
 
     const save = () => {
       localStorage.setItem('applestem-fabric', JSON.stringify(canvas.toJSON()));
+      refreshObjects();
     };
 
     canvas.on('object:modified', save);
     canvas.on('object:added', save);
     canvas.on('object:removed', save);
 
-    canvas.on('selection:created', (e) => setSelected(e.selected?.[0] || null));
-    canvas.on('selection:updated', (e) => setSelected(e.selected?.[0] || null));
-    canvas.on('selection:cleared', () => setSelected(null));
+    canvas.on('selection:created', (e) => {
+      setSelected(e.selected?.[0] || null);
+      refreshObjects();
+    });
+    canvas.on('selection:updated', (e) => {
+      setSelected(e.selected?.[0] || null);
+      refreshObjects();
+    });
+    canvas.on('selection:cleared', () => {
+      setSelected(null);
+      refreshObjects();
+    });
 
     return () => {
       canvas.dispose();
     };
   }, []);
 
-  const addText = () => {
+  const addText = (content = 'Double-click to edit', size = 28) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const text = new IText('Double-click to edit', {
-      left: 200,
-      top: 200,
-      fontSize: 28,
+    const text = new IText(content, {
+      left: 200 + Math.random() * 40,
+      top: 200 + Math.random() * 40,
+      fontSize: size,
       fill: '#0f172a',
       fontFamily: 'system-ui',
     });
@@ -89,13 +108,28 @@ export default function Editor() {
     canvas.renderAll();
   };
 
+  const addTriangle = () => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const tri = new Triangle({
+      left: 320,
+      top: 200,
+      width: 120,
+      height: 100,
+      fill: '#f59e0b',
+    });
+    canvas.add(tri);
+    canvas.setActiveObject(tri);
+    canvas.renderAll();
+  };
+
   const addImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !fabricRef.current) return;
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const img = await FabricImage.fromURL(ev.target?.result as string);
-      img.set({ left: 200, top: 150, scaleX: 0.4, scaleY: 0.4 });
+      img.set({ left: 200, top: 150, scaleX: 0.35, scaleY: 0.35 });
       fabricRef.current!.add(img);
       fabricRef.current!.setActiveObject(img);
       fabricRef.current!.renderAll();
@@ -103,13 +137,55 @@ export default function Editor() {
     reader.readAsDataURL(file);
   };
 
+  const addSymbol = (emoji: string, label: string) => {
+    addText(`${emoji} ${label}`, 22);
+  };
+
+  const loadTemplate = (name: string) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.clear();
+    canvas.backgroundColor = '#ffffff';
+
+    if (name === 'Visual Schedule') {
+      const title = new IText("Today's Schedule", { left: 180, top: 80, fontSize: 32, fill: '#0f766e', fontWeight: 'bold' });
+      const t1 = new IText('1. Morning Meeting', { left: 180, top: 160, fontSize: 20, fill: '#0f172a' });
+      const t2 = new IText('2. Reading Time', { left: 180, top: 210, fontSize: 20, fill: '#0f172a' });
+      const t3 = new IText('3. Snack', { left: 180, top: 260, fontSize: 20, fill: '#0f172a' });
+      canvas.add(title, t1, t2, t3);
+      canvas.renderAll();
+    } else if (name === 'First-Then') {
+      const first = new IText('FIRST', { left: 140, top: 140, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
+      const task = new IText('Work Task', { left: 140, top: 200, fontSize: 20 });
+      const then = new IText('THEN', { left: 420, top: 140, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
+      const choice = new IText('Choice', { left: 420, top: 200, fontSize: 20 });
+      canvas.add(first, task, then, choice);
+      canvas.renderAll();
+    }
+  };
+
   const deleteSelected = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const active = canvas.getActiveObjects();
-    active.forEach((obj) => canvas.remove(obj));
+    canvas.getActiveObjects().forEach((obj) => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.renderAll();
+  };
+
+  const updateSelected = (props: any) => {
+    const canvas = fabricRef.current;
+    if (!canvas || !selected) return;
+    selected.set(props);
+    canvas.renderAll();
+    localStorage.setItem('applestem-fabric', JSON.stringify(canvas.toJSON()));
+  };
+
+  const selectObject = (obj: any) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.setActiveObject(obj);
+    canvas.renderAll();
+    setSelected(obj);
   };
 
   const exportPNG = () => {
@@ -123,37 +199,125 @@ export default function Editor() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-100">
+    <div className="flex h-screen bg-slate-100 overflow-hidden">
       {/* Left sidebar */}
-      <div className="w-56 bg-white border-r p-3 space-y-2">
-        <div className="font-bold text-teal-800 text-lg mb-4">🍎 AppleStem</div>
-        <button onClick={addText} className="w-full py-2 bg-teal-700 text-white rounded-lg text-sm">+ Text</button>
-        <button onClick={addRect} className="w-full py-2 border rounded-lg text-sm">+ Rectangle</button>
-        <button onClick={addCircle} className="w-full py-2 border rounded-lg text-sm">+ Circle</button>
-        <label className="w-full py-2 border rounded-lg text-sm flex justify-center cursor-pointer">
-          + Image
-          <input type="file" accept="image/*" className="hidden" onChange={addImage} />
-        </label>
-        <button onClick={deleteSelected} className="w-full py-2 bg-red-500 text-white rounded-lg text-sm">Delete</button>
-        <button onClick={exportPNG} className="w-full py-2 bg-slate-900 text-white rounded-lg text-sm mt-4">Export PNG</button>
+      <div className="w-60 bg-white border-r flex flex-col shrink-0 overflow-y-auto">
+        <div className="p-4 border-b font-bold text-teal-800 text-lg">🍎 AppleStem</div>
+
+        <div className="p-3 space-y-2 border-b">
+          <button onClick={() => addText()} className="w-full py-2.5 bg-teal-700 text-white rounded-xl text-sm font-medium">+ Text</button>
+          <button onClick={addRect} className="w-full py-2 border rounded-lg text-sm hover:bg-slate-50">Rectangle</button>
+          <button onClick={addCircle} className="w-full py-2 border rounded-lg text-sm hover:bg-slate-50">Circle</button>
+          <button onClick={addTriangle} className="w-full py-2 border rounded-lg text-sm hover:bg-slate-50">Triangle</button>
+          <label className="w-full py-2 border rounded-lg text-sm flex justify-center cursor-pointer hover:bg-slate-50">
+            + Image
+            <input type="file" accept="image/*" className="hidden" onChange={addImage} />
+          </label>
+        </div>
+
+        <div className="p-3 border-b">
+          <div className="text-xs font-semibold text-slate-500 mb-2 uppercase">Symbols</div>
+          <div className="grid grid-cols-4 gap-1">
+            {[
+              ['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],
+              ['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']
+            ].map(([e, l]) => (
+              <button key={l} onClick={() => addSymbol(e, l)} className="py-1.5 text-lg border rounded hover:bg-teal-50" title={l}>{e}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-3 border-b">
+          <div className="text-xs font-semibold text-slate-500 mb-2 uppercase">Templates</div>
+          <button onClick={() => loadTemplate('Visual Schedule')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Visual Schedule</button>
+          <button onClick={() => loadTemplate('First-Then')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">First-Then</button>
+        </div>
+
+        <div className="p-3 mt-auto space-y-2 border-t">
+          <button onClick={deleteSelected} className="w-full py-2 bg-red-500 text-white rounded-lg text-sm">Delete</button>
+          <button onClick={exportPNG} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm">Export PNG</button>
+        </div>
       </div>
 
       {/* Canvas */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-6 bg-slate-200 overflow-auto">
         <canvas ref={canvasEl} className="shadow-2xl rounded-xl bg-white" />
       </div>
 
       {/* Right panel */}
-      <div className="w-64 bg-white border-l p-4">
-        <div className="font-semibold mb-2">Properties</div>
-        {selected ? (
-          <div className="text-sm text-slate-600">
-            Type: {selected.type}<br />
-            Position: {Math.round(selected.left)}, {Math.round(selected.top)}
-          </div>
-        ) : (
-          <div className="text-sm text-slate-400">Select an object</div>
-        )}
+      <div className="w-72 bg-white border-l flex flex-col shrink-0">
+        <div className="p-3 border-b font-semibold">Layers</div>
+        <div className="flex-1 overflow-y-auto p-2 max-h-48">
+          {objects.map((obj, i) => (
+            <div
+              key={i}
+              onClick={() => selectObject(obj)}
+              className={`px-2 py-1.5 text-sm rounded cursor-pointer mb-1 ${
+                selected === obj ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
+              }`}
+            >
+              {obj.type === 'i-text' ? (obj.text?.slice(0, 20) || 'Text') :
+               obj.type === 'rect' ? 'Rectangle' :
+               obj.type === 'circle' ? 'Circle' :
+               obj.type === 'triangle' ? 'Triangle' :
+               obj.type === 'image' ? 'Image' : obj.type}
+            </div>
+          ))}
+          {objects.length === 0 && <div className="text-xs text-slate-400 p-2">No objects yet</div>}
+        </div>
+
+        <div className="p-3 border-t space-y-3">
+          <div className="text-xs font-semibold text-slate-500 uppercase">Properties</div>
+          {selected ? (
+            <>
+              <div>
+                <label className="text-xs text-slate-500">Fill / Color</label>
+                <input
+                  type="color"
+                  value={selected.fill || '#000000'}
+                  onChange={(e) => updateSelected({ fill: e.target.value })}
+                  className="w-full h-9 mt-1 rounded cursor-pointer"
+                />
+              </div>
+              {selected.type === 'i-text' && (
+                <div>
+                  <label className="text-xs text-slate-500">Font size</label>
+                  <input
+                    type="number"
+                    value={selected.fontSize || 24}
+                    onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })}
+                    className="w-full border rounded px-2 py-1 text-sm mt-1"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-xs text-slate-500">Opacity</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={selected.opacity ?? 1}
+                  onChange={(e) => updateSelected({ opacity: Number(e.target.value) })}
+                  className="w-full mt-1"
+                />
+              </div>
+              {(selected.type === 'rect' || selected.type === 'circle' || selected.type === 'triangle') && (
+                <div>
+                  <label className="text-xs text-slate-500">Stroke width</label>
+                  <input
+                    type="number"
+                    value={selected.strokeWidth || 0}
+                    onChange={(e) => updateSelected({ strokeWidth: Number(e.target.value), stroke: selected.stroke || '#000' })}
+                    className="w-full border rounded px-2 py-1 text-sm mt-1"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-sm text-slate-400">Select an object</div>
+          )}
+        </div>
       </div>
     </div>
   );
