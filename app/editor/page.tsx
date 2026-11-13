@@ -45,14 +45,14 @@ export default function Editor() {
     const gridSize = 40;
     for (let i = 0; i < canvas.width! / gridSize; i++) {
       const line = new Line([i * gridSize, 0, i * gridSize, canvas.height!], {
-        stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+        stroke: '#f1f5f9', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
       });
       canvas.add(line);
       guidesRef.current.push(line);
     }
     for (let i = 0; i < canvas.height! / gridSize; i++) {
       const line = new Line([0, i * gridSize, canvas.width!, i * gridSize], {
-        stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+        stroke: '#f1f5f9', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
       });
       canvas.add(line);
       guidesRef.current.push(line);
@@ -250,7 +250,7 @@ export default function Editor() {
     } else if (name === 'Token Board') {
       const title = new IText('Token Board', { left: 280, top: 80, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
       for (let i = 0; i < 5; i++) {
-        const box = new Rect({ left: 140 + i * 110, top: 180, width: 90, height: 90, fill: '#f1f5f9', stroke: '#94a3b8', strokeWidth: 2, rx: 8, ry: 8 });
+        const box = new Rect({ left: 140 + i * 110, top: 180, width: 90, height: 90, fill: '#f8fafc', stroke: '#cbd5e1', strokeWidth: 2, rx: 8, ry: 8 });
         canvas.add(box);
       }
       canvas.add(title);
@@ -415,160 +415,170 @@ export default function Editor() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden">
-      <div className="w-60 bg-white border-r flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-4 border-b font-bold text-teal-800 text-lg">🍎 AppleStem</div>
-
-        <div className="p-3 space-y-2 border-b">
-          <button onClick={() => addText()} className="w-full py-2.5 bg-teal-700 text-white rounded-xl text-sm font-medium">+ Text</button>
-          <button onClick={addRect} className="w-full py-2 border rounded-lg text-sm hover:bg-slate-50">Rectangle</button>
-          <button onClick={addCircle} className="w-full py-2 border rounded-lg text-sm hover:bg-slate-50">Circle</button>
-          <button onClick={addTriangle} className="w-full py-2 border rounded-lg text-sm hover:bg-slate-50">Triangle</button>
-          <label className="w-full py-2 border rounded-lg text-sm flex justify-center cursor-pointer hover:bg-slate-50">
-            + Image
-            <input type="file" accept="image/*" className="hidden" onChange={addImage} />
-          </label>
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+      <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+          <span className="text-2xl">🍎</span>
+          <span className="font-semibold text-slate-800 text-lg tracking-tight">AppleStem</span>
         </div>
 
-        <div className="p-3 border-b">
-          <div className="text-xs font-semibold text-slate-500 mb-2 uppercase">Symbols</div>
-          <div className="grid grid-cols-4 gap-1">
+        <div className="p-4 space-y-2 border-b border-slate-100">
+          <button onClick={() => addText()} className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors">+ Text</button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={addRect} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">Rectangle</button>
+            <button onClick={addCircle} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">Circle</button>
+            <button onClick={addTriangle} className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors">Triangle</button>
+            <label className="py-2 border border-slate-200 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center cursor-pointer">
+              + Image
+              <input type="file" accept="image/*" className="hidden" onChange={addImage} />
+            </label>
+          </div>
+        </div>
+
+        <div className="p-4 border-b border-slate-100">
+          <div className="text-[11px] font-semibold text-slate-400 mb-3 uppercase tracking-wider">Symbols</div>
+          <div className="grid grid-cols-4 gap-2">
             {[['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']].map(([e, l]) => (
-              <button key={l} onClick={() => addSymbol(e, l)} className="py-1.5 text-lg border rounded hover:bg-teal-50" title={l}>{e}</button>
+              <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-xl border border-slate-200 rounded-lg hover:bg-teal-50 hover:border-teal-200 transition-colors" title={l}>{e}</button>
             ))}
           </div>
         </div>
 
-        <div className="p-3 border-b">
-          <div className="text-xs font-semibold text-slate-500 mb-2 uppercase">Templates</div>
-          <button onClick={() => loadTemplate('Visual Schedule')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Visual Schedule</button>
-          <button onClick={() => loadTemplate('First-Then')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">First-Then</button>
-          <button onClick={() => loadTemplate('Communication Board')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Communication Board</button>
-          <button onClick={() => loadTemplate('Token Board')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Token Board</button>
+        <div className="p-4 border-b border-slate-100">
+          <div className="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wider">Templates</div>
+          <div className="space-y-1">
+            {['Visual Schedule','First-Then','Communication Board','Token Board'].map(name => (
+              <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-2 text-sm text-slate-700 rounded-lg hover:bg-slate-50 transition-colors">{name}</button>
+            ))}
+          </div>
         </div>
 
-        <div className="p-3 border-b space-y-2">
-          <div className="text-xs font-semibold text-slate-500 uppercase">Background</div>
-          <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-9 rounded cursor-pointer" />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+        <div className="p-4 border-b border-slate-100 space-y-3">
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Background</div>
+          <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-10 rounded-lg border border-slate-200 cursor-pointer" />
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} className="rounded" />
             Show grid
           </label>
         </div>
 
-        <div className="p-3 mt-auto space-y-2 border-t">
-          <div className="flex gap-1">
-            <button onClick={() => changeZoom(-0.1)} className="flex-1 py-2 text-sm border rounded-lg">−</button>
-            <div className="flex-1 py-2 text-sm text-center border rounded-lg">{Math.round(zoom * 100)}%</div>
-            <button onClick={() => changeZoom(0.1)} className="flex-1 py-2 text-sm border rounded-lg">+</button>
+        <div className="p-4 mt-auto space-y-2 border-t border-slate-100">
+          <div className="flex gap-2">
+            <button onClick={() => changeZoom(-0.1)} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">−</button>
+            <div className="flex-1 py-2 text-sm text-center border border-slate-200 rounded-lg text-slate-600">{Math.round(zoom * 100)}%</div>
+            <button onClick={() => changeZoom(0.1)} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">+</button>
           </div>
-          <div className="flex gap-1">
-            <button onClick={undo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Undo</button>
-            <button onClick={redo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Redo</button>
+          <div className="flex gap-2">
+            <button onClick={undo} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">Undo</button>
+            <button onClick={redo} className="flex-1 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-700">Redo</button>
           </div>
-          <button onClick={deleteSelected} className="w-full py-2 bg-red-500 text-white rounded-lg text-sm">Delete</button>
-          <button onClick={exportPNG} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm">Export PNG</button>
-          <button onClick={saveToCloud} className="w-full py-2 text-sm border rounded-lg text-slate-600">Save to Cloud</button>
+          <button onClick={deleteSelected} className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Delete</button>
+          <button onClick={exportPNG} className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-sm font-medium transition-colors">Export PNG</button>
+          <button onClick={saveToCloud} className="w-full py-2 text-sm border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50">Save to Cloud</button>
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-6 bg-slate-200 overflow-auto">
-        <canvas ref={canvasEl} className="shadow-2xl rounded-xl" />
+      <div className="flex-1 flex items-center justify-center p-8 bg-slate-100 overflow-auto">
+        <div className="relative">
+          <canvas ref={canvasEl} className="shadow-xl rounded-xl bg-white" />
+        </div>
       </div>
 
-      <div className="w-72 bg-white border-l flex flex-col shrink-0">
-        <div className="p-3 border-b font-semibold">Layers</div>
-        <div className="flex-1 overflow-y-auto p-2 max-h-40">
+      <div className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0">
+        <div className="px-4 py-3 border-b border-slate-100 font-medium text-slate-800">Layers</div>
+        <div className="flex-1 overflow-y-auto p-3 max-h-48">
+          {objects.length === 0 && (
+            <div className="text-sm text-slate-400 text-center py-6">No objects yet</div>
+          )}
           {objects.map((obj, i) => (
             <div
               key={i}
               onClick={() => selectObject(obj)}
-              className={`px-2 py-1.5 text-sm rounded cursor-pointer mb-1 flex justify-between ${
-                selected === obj ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
+              className={`px-3 py-2 text-sm rounded-lg cursor-pointer mb-1 flex items-center justify-between transition-colors ${
+                selected === obj ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50 text-slate-700'
               }`}
             >
               <span className="truncate">
-                {obj.type === 'i-text' ? (obj.text?.slice(0, 18) || 'Text') :
+                {obj.type === 'i-text' ? (obj.text?.slice(0, 20) || 'Text') :
                  obj.type === 'rect' ? 'Rectangle' :
                  obj.type === 'circle' ? 'Circle' :
                  obj.type === 'triangle' ? 'Triangle' :
                  obj.type === 'group' ? 'Group' :
                  obj.type === 'image' ? 'Image' : obj.type}
               </span>
-              {obj.lockMovementX && <span className="text-xs">🔒</span>}
-              {obj.visible === false && <span className="text-xs">👁️</span>}
+              <span className="flex gap-1 text-xs">
+                {obj.lockMovementX && <span>🔒</span>}
+                {obj.visible === false && <span>👁️</span>}
+              </span>
             </div>
           ))}
-          {objects.length === 0 && <div className="text-xs text-slate-400 p-2">No objects yet</div>}
         </div>
 
-        <div className="p-3 border-t space-y-2">
-          <div className="text-xs font-semibold text-slate-500 uppercase">Align</div>
-          <div className="grid grid-cols-3 gap-1">
+        <div className="p-4 border-t border-slate-100 space-y-3">
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Align</div>
+          <div className="grid grid-cols-3 gap-1.5">
             {['left','center','right','top','middle','bottom'].map(d => (
-              <button key={d} onClick={() => align(d)} className="py-1 text-xs border rounded capitalize hover:bg-slate-50">{d}</button>
+              <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 capitalize text-slate-700">{d}</button>
             ))}
           </div>
-          <div className="flex gap-1">
-            <button onClick={() => distribute('horizontal')} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Dist H</button>
-            <button onClick={() => distribute('vertical')} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Dist V</button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button onClick={() => distribute('horizontal')} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Dist H</button>
+            <button onClick={() => distribute('vertical')} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Dist V</button>
+            <button onClick={bringToFront} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Front</button>
+            <button onClick={sendToBack} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Back</button>
           </div>
-          <div className="flex gap-1">
-            <button onClick={bringToFront} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Front</button>
-            <button onClick={sendToBack} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Back</button>
-          </div>
-          <div className="flex gap-1">
-            <button onClick={groupSelected} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Group</button>
-            <button onClick={ungroup} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Ungroup</button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Group</button>
+            <button onClick={ungroup} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50 text-slate-700">Ungroup</button>
           </div>
         </div>
 
-        <div className="p-3 border-t space-y-3">
-          <div className="text-xs font-semibold text-slate-500 uppercase">Properties</div>
+        <div className="p-4 border-t border-slate-100 space-y-3">
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Properties</div>
           {selected ? (
             <>
-              <div className="flex gap-1">
-                <button onClick={toggleLock} className="flex-1 py-1.5 text-xs border rounded">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
-                <button onClick={toggleHide} className="flex-1 py-1.5 text-xs border rounded">{selected.visible === false ? 'Show' : 'Hide'}</button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button onClick={toggleLock} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
+                <button onClick={toggleHide} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">{selected.visible === false ? 'Show' : 'Hide'}</button>
               </div>
               <div>
-                <label className="text-xs text-slate-500">Fill / Color</label>
-                <input type="color" value={selected.fill || '#000000'} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-9 mt-1 rounded cursor-pointer" />
+                <label className="text-xs text-slate-500 block mb-1">Fill</label>
+                <input type="color" value={selected.fill || '#000000'} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-9 rounded-lg border border-slate-200 cursor-pointer" />
               </div>
               {selected.type === 'i-text' && (
                 <>
                   <div>
-                    <label className="text-xs text-slate-500">Font</label>
-                    <select value={selected.fontFamily || 'system-ui'} onChange={(e) => updateSelected({ fontFamily: e.target.value })} className="w-full border rounded px-2 py-1 text-sm mt-1">
+                    <label className="text-xs text-slate-500 block mb-1">Font</label>
+                    <select value={selected.fontFamily || 'system-ui'} onChange={(e) => updateSelected({ fontFamily: e.target.value })} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm">
                       <option value="system-ui">System</option>
                       <option value="Georgia, serif">Serif</option>
                       <option value="'Comic Sans MS', cursive">Friendly</option>
                       <option value="monospace">Mono</option>
                     </select>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className="flex-1 py-1 text-xs border rounded font-bold">B</button>
-                    <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className="flex-1 py-1 text-xs border rounded italic">I</button>
-                    <button onClick={() => updateSelected({ underline: !selected.underline })} className="flex-1 py-1 text-xs border rounded underline">U</button>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`py-1.5 text-xs border rounded-md font-bold ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'border-slate-200'}`}>B</button>
+                    <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`py-1.5 text-xs border rounded-md italic ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'border-slate-200'}`}>I</button>
+                    <button onClick={() => updateSelected({ underline: !selected.underline })} className={`py-1.5 text-xs border rounded-md underline ${selected.underline ? 'bg-slate-100' : 'border-slate-200'}`}>U</button>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => updateSelected({ textAlign: 'left' })} className="flex-1 py-1 text-xs border rounded">Left</button>
-                    <button onClick={() => updateSelected({ textAlign: 'center' })} className="flex-1 py-1 text-xs border rounded">Center</button>
-                    <button onClick={() => updateSelected({ textAlign: 'right' })} className="flex-1 py-1 text-xs border rounded">Right</button>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button onClick={() => updateSelected({ textAlign: 'left' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">Left</button>
+                    <button onClick={() => updateSelected({ textAlign: 'center' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">Center</button>
+                    <button onClick={() => updateSelected({ textAlign: 'right' })} className="py-1.5 text-xs border border-slate-200 rounded-md hover:bg-slate-50">Right</button>
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500">Font size</label>
-                    <input type="number" value={selected.fontSize || 24} onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })} className="w-full border rounded px-2 py-1 text-sm mt-1" />
+                    <label className="text-xs text-slate-500 block mb-1">Size</label>
+                    <input type="number" value={selected.fontSize || 24} onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm" />
                   </div>
                 </>
               )}
               <div>
-                <label className="text-xs text-slate-500">Opacity</label>
-                <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full mt-1" />
+                <label className="text-xs text-slate-500 block mb-1">Opacity</label>
+                <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full" />
               </div>
             </>
           ) : (
-            <div className="text-sm text-slate-400">Select an object</div>
+            <div className="text-sm text-slate-400 py-4 text-center">Select an object to edit</div>
           )}
         </div>
       </div>
