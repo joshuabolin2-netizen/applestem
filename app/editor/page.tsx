@@ -5,9 +5,11 @@ import html2canvas from 'html2canvas';
 
 interface CanvasItem {
   id: number;
-  type: 'text' | 'photo' | 'group';
+  type: 'text' | 'photo' | 'shape' | 'group';
   content?: string;
   src?: string;
+  shape?: 'rect' | 'circle';
+  bg?: string;
   x: number;
   y: number;
   width: number;
@@ -21,7 +23,7 @@ interface CanvasItem {
   textAlign?: 'left' | 'center' | 'right';
   locked?: boolean;
   hidden?: boolean;
-  children?: number[]; // for groups
+  children?: number[];
 }
 
 export default function Editor() {
@@ -39,7 +41,24 @@ export default function Editor() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [gridSize, setGridSize] = useState(20);
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
+  const [canvasBg, setCanvasBg] = useState('#ffffff');
   const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Auto-save to localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('applestem-board');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.items) setItems(parsed.items);
+        if (parsed.bg) setCanvasBg(parsed.bg);
+      } catch {}
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('applestem-board', JSON.stringify({ items, bg: canvasBg }));
+  }, [items, canvasBg]);
 
   const selected = items.filter(i => selectedIds.includes(i.id));
   const primary = selected[0];
@@ -192,6 +211,42 @@ export default function Editor() {
   };
 
   // ---------- Add content ----------
+  const addShape = (kind: 'rect' | 'circle') => {
+    const item: CanvasItem = {
+      id: Date.now(),
+      type: 'shape',
+      shape: kind,
+      bg: kind === 'circle' ? '#14b8a6' : '#0f766e',
+      x: 320,
+      y: 200,
+      width: kind === 'circle' ? 140 : 180,
+      height: kind === 'circle' ? 140 : 100,
+      rotation: 0,
+    };
+    pushHistory([...items, item]);
+    setSelectedIds([item.id]);
+  };
+
+  const addSymbol = (emoji: string, label: string) => {
+    const item: CanvasItem = {
+      id: Date.now(),
+      type: 'text',
+      content: `${emoji} ${label}`,
+      x: 300,
+      y: 240,
+      width: 160,
+      height: 50,
+      rotation: 0,
+      fontSize: 20,
+      color: '#0f172a',
+      fontFamily: 'system-ui, sans-serif',
+      fontWeight: 'normal',
+      textAlign: 'center',
+    };
+    pushHistory([...items, item]);
+    setSelectedIds([item.id]);
+  };
+
   const addText = () => {
     const item: CanvasItem = {
       id: Date.now(),
@@ -257,10 +312,10 @@ export default function Editor() {
     } else if (name === 'Communication Board') {
       news = [
         { id: base, type: 'text', content: 'I want...', x: 260, y: 80, width: 200, height: 40, rotation: 0, fontSize: 22, color: '#0f766e', fontWeight: 'bold' },
-        { id: base + 1, type: 'text', content: '\uD83C\uDF4E Food', x: 160, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
-        { id: base + 2, type: 'text', content: '\uD83D\uDEBD Bathroom', x: 340, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
-        { id: base + 3, type: 'text', content: '\uD83D\uDCA7 Drink', x: 160, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
-        { id: base + 4, type: 'text', content: '\uD83D\uDED1 Break', x: 340, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 1, type: 'text', content: '🍎 Food', x: 160, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 2, type: 'text', content: '🚽 Bathroom', x: 340, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 3, type: 'text', content: '💧 Drink', x: 160, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 4, type: 'text', content: '🛑 Break', x: 340, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
       ];
     }
 
@@ -493,7 +548,7 @@ export default function Editor() {
   const exportCanvas = async (format: 'png' | 'jpg') => {
     const el = document.getElementById('canvas');
     if (!el) return;
-    const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' });
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: canvasBg });
     const link = document.createElement('a');
     link.download = `applestem-${Date.now()}.${format}`;
     link.href = canvas.toDataURL(`image/${format}`, 0.95);
@@ -523,6 +578,19 @@ export default function Editor() {
             + Photo
             <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
           </label>
+          <div className="flex gap-1">
+            <button onClick={() => addShape('rect')} className="flex-1 py-2 border rounded-lg text-xs hover:bg-slate-50">Rect</button>
+            <button onClick={() => addShape('circle')} className="flex-1 py-2 border rounded-lg text-xs hover:bg-slate-50">Circle</button>
+          </div>
+          <div className="text-xs font-semibold text-slate-500 mt-2 uppercase tracking-wide">Symbols</div>
+          <div className="grid grid-cols-4 gap-1">
+            {[
+              ['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],
+              ['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']
+            ].map(([e,l]) => (
+              <button key={l} onClick={() => addSymbol(e,l)} className="py-1 text-lg border rounded hover:bg-teal-50" title={l}>{e}</button>
+            ))}
+          </div>
         </div>
 
         <div className="p-3 border-b">
@@ -561,6 +629,10 @@ export default function Editor() {
               className="w-16 border rounded px-1 py-0.5 text-xs"
             />
           </div>
+          <div className="flex items-center justify-between text-sm">
+            <span>Background</span>
+            <input type="color" value={canvasBg} onChange={(e) => setCanvasBg(e.target.value)} className="w-8 h-8 rounded cursor-pointer" />
+          </div>
         </div>
 
         <div className="p-3 mt-auto space-y-2 border-t">
@@ -590,11 +662,12 @@ export default function Editor() {
         <div
           id="canvas"
           ref={canvasRef}
-          className="relative bg-white shadow-2xl rounded-2xl origin-center"
+          className="relative shadow-2xl rounded-2xl origin-center"
           style={{
             width: 900,
             height: 650,
             transform: `scale(${zoom})`,
+            backgroundColor: canvasBg,
           }}
         >
           {/* Grid overlay */}
@@ -626,6 +699,12 @@ export default function Editor() {
               style={{ top: y }}
             />
           ))}
+
+          {items.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm pointer-events-none">
+              Add text, shapes, or a template to start
+            </div>
+          )}
 
           {items.filter(i => !i.hidden).map(item => (
             <div
@@ -691,6 +770,14 @@ export default function Editor() {
                     {item.content}
                   </div>
                 )
+              ) : item.type === 'shape' ? (
+                <div
+                  className="w-full h-full"
+                  style={{
+                    backgroundColor: item.bg || '#0f766e',
+                    borderRadius: item.shape === 'circle' ? '50%' : '12px',
+                  }}
+                />
               ) : item.type === 'photo' ? (
                 <img
                   src={item.src}
@@ -742,9 +829,9 @@ export default function Editor() {
                 selectedIds.includes(item.id) ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
               }`}
             >
-              <span className="text-xs opacity-50">{item.type === 'text' ? 'T' : item.type === 'photo' ? '🖼' : '□'}</span>
+              <span className="text-xs opacity-50">{item.type === 'text' ? 'T' : item.type === 'photo' ? '🖼' : item.type === 'shape' ? '▢' : '□'}</span>
               <span className="truncate flex-1">
-                {item.type === 'text' ? (item.content || 'Text') : item.type === 'photo' ? 'Photo' : 'Group'}
+                {item.type === 'text' ? (item.content || 'Text') : item.type === 'photo' ? 'Photo' : item.type === 'shape' ? (item.shape === 'circle' ? 'Circle' : 'Rect') : 'Group'}
               </span>
               {item.locked && <span className="text-xs">🔒</span>}
               {item.hidden && <span className="text-xs">👁‍🗨</span>}
@@ -758,6 +845,23 @@ export default function Editor() {
 
             {primary.type === 'text' && (
               <>
+                <div>
+                  <label className="text-xs text-slate-500">Font</label>
+                  <select
+                    value={primary.fontFamily || 'system-ui, sans-serif'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setItems(items.map(i => selectedIds.includes(i.id) ? { ...i, fontFamily: val } : i));
+                      commit();
+                    }}
+                    className="w-full border rounded-lg px-2 py-1 text-sm mt-1"
+                  >
+                    <option value="system-ui, sans-serif">System</option>
+                    <option value="Georgia, serif">Serif</option>
+                    <option value="'Comic Sans MS', cursive">Friendly</option>
+                    <option value="monospace">Mono</option>
+                  </select>
+                </div>
                 <div>
                   <label className="text-xs text-slate-500">Font size</label>
                   <input
