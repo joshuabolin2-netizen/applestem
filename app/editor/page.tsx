@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Canvas, Rect, Circle, Triangle, IText, FabricImage, Group } from 'fabric';
+import { Canvas, Rect, Circle, Triangle, IText, FabricImage, Group, Line } from 'fabric';
 
 export default function Editor() {
   const canvasEl = useRef<HTMLCanvasElement>(null);
@@ -11,18 +11,21 @@ export default function Editor() {
   const [bgColor, setBgColor] = useState('#ffffff');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [zoom, setZoom] = useState(1);
+  const [showGrid, setShowGrid] = useState(true);
   const isRestoring = useRef(false);
+  const guidesRef = useRef<any[]>([]);
 
   const refreshObjects = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    setObjects([...canvas.getObjects()].reverse());
+    setObjects([...canvas.getObjects()].filter(o => !o.excludeFromExport).reverse());
   };
 
   const pushHistory = () => {
     const canvas = fabricRef.current;
     if (!canvas || isRestoring.current) return;
-    const json = JSON.stringify(canvas.toJSON());
+    const json = JSON.stringify(canvas.toJSON(['excludeFromExport']));
     setHistory(h => {
       const next = h.slice(0, historyIndex + 1);
       next.push(json);
@@ -32,6 +35,30 @@ export default function Editor() {
     setHistoryIndex(i => Math.min(i + 1, 39));
     localStorage.setItem('applestem-fabric', json);
     refreshObjects();
+  };
+
+  const drawGrid = () => {
+    const canvas = fabricRef.current;
+    if (!canvas || !showGrid) return;
+    guidesRef.current.forEach(g => canvas.remove(g));
+    guidesRef.current = [];
+    const gridSize = 40;
+    for (let i = 0; i < canvas.width! / gridSize; i++) {
+      const line = new Line([i * gridSize, 0, i * gridSize, canvas.height!], {
+        stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+      });
+      canvas.add(line);
+      guidesRef.current.push(line);
+    }
+    for (let i = 0; i < canvas.height! / gridSize; i++) {
+      const line = new Line([0, i * gridSize, canvas.width!, i * gridSize], {
+        stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+      });
+      canvas.add(line);
+      guidesRef.current.push(line);
+    }
+    if (guidesRef.current[0]) canvas.sendObjectToBack(guidesRef.current[0]);
+    canvas.renderAll();
   };
 
   const undo = () => {
@@ -44,6 +71,7 @@ export default function Editor() {
       canvas.renderAll();
       setHistoryIndex(i => i - 1);
       setBgColor(canvas.backgroundColor as string || '#ffffff');
+      if (showGrid) drawGrid();
       refreshObjects();
       isRestoring.current = false;
     });
@@ -59,6 +87,7 @@ export default function Editor() {
       canvas.renderAll();
       setHistoryIndex(i => i + 1);
       setBgColor(canvas.backgroundColor as string || '#ffffff');
+      if (showGrid) drawGrid();
       refreshObjects();
       isRestoring.current = false;
     });
@@ -84,27 +113,20 @@ export default function Editor() {
         setBgColor(canvas.backgroundColor as string || '#ffffff');
         setHistory([saved]);
         setHistoryIndex(0);
+        if (showGrid) drawGrid();
       });
     } else {
       pushHistory();
+      if (showGrid) drawGrid();
     }
 
     canvas.on('object:modified', pushHistory);
-    canvas.on('object:added', pushHistory);
+    canvas.on('object:added', (e) => { if (!e.target?.excludeFromExport) pushHistory(); });
     canvas.on('object:removed', pushHistory);
 
-    canvas.on('selection:created', (e) => {
-      setSelected(e.selected?.[0] || null);
-      refreshObjects();
-    });
-    canvas.on('selection:updated', (e) => {
-      setSelected(e.selected?.[0] || null);
-      refreshObjects();
-    });
-    canvas.on('selection:cleared', () => {
-      setSelected(null);
-      refreshObjects();
-    });
+    canvas.on('selection:created', (e) => { setSelected(e.selected?.[0] || null); refreshObjects(); });
+    canvas.on('selection:updated', (e) => { setSelected(e.selected?.[0] || null); refreshObjects(); });
+    canvas.on('selection:cleared', () => { setSelected(null); refreshObjects(); });
 
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -114,10 +136,7 @@ export default function Editor() {
         canvas.discardActiveObject();
         canvas.renderAll();
       }
-      if (meta && e.key === 'z') {
-        e.preventDefault();
-        e.shiftKey ? redo() : undo();
-      }
+      if (meta && e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       if (meta && e.key === 'd') {
         e.preventDefault();
         const active = canvas.getActiveObject();
@@ -130,6 +149,16 @@ export default function Editor() {
           });
         }
       }
+      if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && canvas.getActiveObject()) {
+        e.preventDefault();
+        const obj = canvas.getActiveObject()!;
+        const step = e.shiftKey ? 10 : 1;
+        if (e.key === 'ArrowUp') obj.set({ top: (obj.top || 0) - step });
+        if (e.key === 'ArrowDown') obj.set({ top: (obj.top || 0) + step });
+        if (e.key === 'ArrowLeft') obj.set({ left: (obj.left || 0) - step });
+        if (e.key === 'ArrowRight') obj.set({ left: (obj.left || 0) + step });
+        canvas.renderAll();
+      }
     };
     window.addEventListener('keydown', onKey);
 
@@ -139,15 +168,15 @@ export default function Editor() {
     };
   }, []);
 
+  useEffect(() => { if (fabricRef.current) drawGrid(); }, [showGrid]);
+
   const addText = (content = 'Double-click to edit', size = 28, family = 'system-ui') => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const text = new IText(content, {
       left: 200 + Math.random() * 40,
       top: 200 + Math.random() * 40,
-      fontSize: size,
-      fill: '#0f172a',
-      fontFamily: family,
+      fontSize: size, fill: '#0f172a', fontFamily: family,
     });
     canvas.add(text);
     canvas.setActiveObject(text);
@@ -157,35 +186,22 @@ export default function Editor() {
   const addRect = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const rect = new Rect({
-      left: 250, top: 180, width: 180, height: 100,
-      fill: '#0f766e', rx: 12, ry: 12,
-    });
-    canvas.add(rect);
-    canvas.setActiveObject(rect);
-    canvas.renderAll();
+    const rect = new Rect({ left: 250, top: 180, width: 180, height: 100, fill: '#0f766e', rx: 12, ry: 12 });
+    canvas.add(rect); canvas.setActiveObject(rect); canvas.renderAll();
   };
 
   const addCircle = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const circle = new Circle({
-      left: 300, top: 200, radius: 70, fill: '#14b8a6',
-    });
-    canvas.add(circle);
-    canvas.setActiveObject(circle);
-    canvas.renderAll();
+    const circle = new Circle({ left: 300, top: 200, radius: 70, fill: '#14b8a6' });
+    canvas.add(circle); canvas.setActiveObject(circle); canvas.renderAll();
   };
 
   const addTriangle = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const tri = new Triangle({
-      left: 320, top: 200, width: 120, height: 100, fill: '#f59e0b',
-    });
-    canvas.add(tri);
-    canvas.setActiveObject(tri);
-    canvas.renderAll();
+    const tri = new Triangle({ left: 320, top: 200, width: 120, height: 100, fill: '#f59e0b' });
+    canvas.add(tri); canvas.setActiveObject(tri); canvas.renderAll();
   };
 
   const addImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -210,6 +226,7 @@ export default function Editor() {
     canvas.clear();
     canvas.backgroundColor = '#ffffff';
     setBgColor('#ffffff');
+    if (showGrid) drawGrid();
 
     if (name === 'Visual Schedule') {
       const title = new IText("Today's Schedule", { left: 180, top: 80, fontSize: 32, fill: '#0f766e', fontWeight: 'bold' });
@@ -230,6 +247,13 @@ export default function Editor() {
       const drink = new IText('💧 Drink', { left: 140, top: 240, fontSize: 22 });
       const brk = new IText('🛑 Break', { left: 340, top: 240, fontSize: 22 });
       canvas.add(title, food, bath, drink, brk);
+    } else if (name === 'Token Board') {
+      const title = new IText('Token Board', { left: 280, top: 80, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
+      for (let i = 0; i < 5; i++) {
+        const box = new Rect({ left: 140 + i * 110, top: 180, width: 90, height: 90, fill: '#f1f5f9', stroke: '#94a3b8', strokeWidth: 2, rx: 8, ry: 8 });
+        canvas.add(box);
+      }
+      canvas.add(title);
     }
     canvas.renderAll();
     pushHistory();
@@ -279,16 +303,46 @@ export default function Editor() {
     pushHistory();
   };
 
+  const distribute = (dir: 'horizontal' | 'vertical') => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const active = canvas.getActiveObjects();
+    if (active.length < 3) return;
+    const sorted = [...active].sort((a, b) => dir === 'horizontal' ? (a.left || 0) - (b.left || 0) : (a.top || 0) - (b.top || 0));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const total = dir === 'horizontal'
+      ? ((last.left || 0) - (first.left || 0))
+      : ((last.top || 0) - (first.top || 0));
+    const step = total / (sorted.length - 1);
+    sorted.forEach((obj, i) => {
+      if (dir === 'horizontal') obj.set({ left: (first.left || 0) + step * i });
+      else obj.set({ top: (first.top || 0) + step * i });
+    });
+    canvas.renderAll();
+    pushHistory();
+  };
+
+  const bringToFront = () => {
+    const canvas = fabricRef.current;
+    if (!canvas || !selected) return;
+    canvas.bringObjectToFront(selected);
+    canvas.renderAll();
+    pushHistory();
+  };
+
+  const sendToBack = () => {
+    const canvas = fabricRef.current;
+    if (!canvas || !selected) return;
+    canvas.sendObjectToBack(selected);
+    canvas.renderAll();
+    pushHistory();
+  };
+
   const toggleLock = () => {
     if (!selected) return;
     const locked = !selected.lockMovementX;
-    selected.set({
-      lockMovementX: locked,
-      lockMovementY: locked,
-      lockRotation: locked,
-      lockScalingX: locked,
-      lockScalingY: locked,
-    });
+    selected.set({ lockMovementX: locked, lockMovementY: locked, lockRotation: locked, lockScalingX: locked, lockScalingY: locked });
     fabricRef.current?.renderAll();
     pushHistory();
     setSelected({ ...selected });
@@ -329,6 +383,17 @@ export default function Editor() {
     canvas.setActiveObject(obj);
     canvas.renderAll();
     setSelected(obj);
+  };
+
+  const changeZoom = (delta: number) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const newZoom = Math.min(2, Math.max(0.4, zoom + delta));
+    setZoom(newZoom);
+    canvas.setZoom(newZoom);
+    canvas.setWidth(900 * newZoom);
+    canvas.setHeight(650 * newZoom);
+    canvas.renderAll();
   };
 
   const exportPNG = () => {
@@ -379,14 +444,24 @@ export default function Editor() {
           <button onClick={() => loadTemplate('Visual Schedule')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Visual Schedule</button>
           <button onClick={() => loadTemplate('First-Then')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">First-Then</button>
           <button onClick={() => loadTemplate('Communication Board')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Communication Board</button>
+          <button onClick={() => loadTemplate('Token Board')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Token Board</button>
         </div>
 
-        <div className="p-3 border-b">
-          <div className="text-xs font-semibold text-slate-500 mb-2 uppercase">Background</div>
+        <div className="p-3 border-b space-y-2">
+          <div className="text-xs font-semibold text-slate-500 uppercase">Background</div>
           <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-9 rounded cursor-pointer" />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+            Show grid
+          </label>
         </div>
 
         <div className="p-3 mt-auto space-y-2 border-t">
+          <div className="flex gap-1">
+            <button onClick={() => changeZoom(-0.1)} className="flex-1 py-2 text-sm border rounded-lg">−</button>
+            <div className="flex-1 py-2 text-sm text-center border rounded-lg">{Math.round(zoom * 100)}%</div>
+            <button onClick={() => changeZoom(0.1)} className="flex-1 py-2 text-sm border rounded-lg">+</button>
+          </div>
           <div className="flex gap-1">
             <button onClick={undo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Undo</button>
             <button onClick={redo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Redo</button>
@@ -435,6 +510,14 @@ export default function Editor() {
             ))}
           </div>
           <div className="flex gap-1">
+            <button onClick={() => distribute('horizontal')} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Dist H</button>
+            <button onClick={() => distribute('vertical')} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Dist V</button>
+          </div>
+          <div className="flex gap-1">
+            <button onClick={bringToFront} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Front</button>
+            <button onClick={sendToBack} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Back</button>
+          </div>
+          <div className="flex gap-1">
             <button onClick={groupSelected} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Group</button>
             <button onClick={ungroup} className="flex-1 py-1.5 text-xs border rounded hover:bg-slate-50">Ungroup</button>
           </div>
@@ -456,16 +539,22 @@ export default function Editor() {
                 <>
                   <div>
                     <label className="text-xs text-slate-500">Font</label>
-                    <select
-                      value={selected.fontFamily || 'system-ui'}
-                      onChange={(e) => updateSelected({ fontFamily: e.target.value })}
-                      className="w-full border rounded px-2 py-1 text-sm mt-1"
-                    >
+                    <select value={selected.fontFamily || 'system-ui'} onChange={(e) => updateSelected({ fontFamily: e.target.value })} className="w-full border rounded px-2 py-1 text-sm mt-1">
                       <option value="system-ui">System</option>
                       <option value="Georgia, serif">Serif</option>
                       <option value="'Comic Sans MS', cursive">Friendly</option>
                       <option value="monospace">Mono</option>
                     </select>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className="flex-1 py-1 text-xs border rounded font-bold">B</button>
+                    <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className="flex-1 py-1 text-xs border rounded italic">I</button>
+                    <button onClick={() => updateSelected({ underline: !selected.underline })} className="flex-1 py-1 text-xs border rounded underline">U</button>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => updateSelected({ textAlign: 'left' })} className="flex-1 py-1 text-xs border rounded">Left</button>
+                    <button onClick={() => updateSelected({ textAlign: 'center' })} className="flex-1 py-1 text-xs border rounded">Center</button>
+                    <button onClick={() => updateSelected({ textAlign: 'right' })} className="flex-1 py-1 text-xs border rounded">Right</button>
                   </div>
                   <div>
                     <label className="text-xs text-slate-500">Font size</label>
