@@ -9,6 +9,9 @@ export default function Editor() {
   const [selected, setSelected] = useState<any>(null);
   const [objects, setObjects] = useState<any[]>([]);
   const [bgColor, setBgColor] = useState('#ffffff');
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const isRestoring = useRef(false);
 
   const refreshObjects = () => {
     const canvas = fabricRef.current;
@@ -16,11 +19,49 @@ export default function Editor() {
     setObjects([...canvas.getObjects()].reverse());
   };
 
-  const save = () => {
+  const pushHistory = () => {
+    const canvas = fabricRef.current;
+    if (!canvas || isRestoring.current) return;
+    const json = JSON.stringify(canvas.toJSON());
+    setHistory(h => {
+      const next = h.slice(0, historyIndex + 1);
+      next.push(json);
+      if (next.length > 40) next.shift();
+      return next;
+    });
+    setHistoryIndex(i => Math.min(i + 1, 39));
+    localStorage.setItem('applestem-fabric', json);
+    refreshObjects();
+  };
+
+  const undo = () => {
+    if (historyIndex <= 0) return;
     const canvas = fabricRef.current;
     if (!canvas) return;
-    localStorage.setItem('applestem-fabric', JSON.stringify(canvas.toJSON()));
-    refreshObjects();
+    isRestoring.current = true;
+    const prev = history[historyIndex - 1];
+    canvas.loadFromJSON(prev).then(() => {
+      canvas.renderAll();
+      setHistoryIndex(i => i - 1);
+      setBgColor(canvas.backgroundColor as string || '#ffffff');
+      refreshObjects();
+      isRestoring.current = false;
+    });
+  };
+
+  const redo = () => {
+    if (historyIndex >= history.length - 1) return;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    isRestoring.current = true;
+    const next = history[historyIndex + 1];
+    canvas.loadFromJSON(next).then(() => {
+      canvas.renderAll();
+      setHistoryIndex(i => i + 1);
+      setBgColor(canvas.backgroundColor as string || '#ffffff');
+      refreshObjects();
+      isRestoring.current = false;
+    });
   };
 
   useEffect(() => {
@@ -41,12 +82,16 @@ export default function Editor() {
         canvas.renderAll();
         refreshObjects();
         setBgColor(canvas.backgroundColor as string || '#ffffff');
+        setHistory([saved]);
+        setHistoryIndex(0);
       });
+    } else {
+      pushHistory();
     }
 
-    canvas.on('object:modified', save);
-    canvas.on('object:added', save);
-    canvas.on('object:removed', save);
+    canvas.on('object:modified', pushHistory);
+    canvas.on('object:added', pushHistory);
+    canvas.on('object:removed', pushHistory);
 
     canvas.on('selection:created', (e) => {
       setSelected(e.selected?.[0] || null);
@@ -62,13 +107,18 @@ export default function Editor() {
     });
 
     const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
       if ((e.key === 'Delete' || e.key === 'Backspace') && canvas.getActiveObject()) {
         e.preventDefault();
         canvas.getActiveObjects().forEach((obj) => canvas.remove(obj));
         canvas.discardActiveObject();
         canvas.renderAll();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+      if (meta && e.key === 'z') {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      }
+      if (meta && e.key === 'd') {
         e.preventDefault();
         const active = canvas.getActiveObject();
         if (active) {
@@ -89,7 +139,7 @@ export default function Editor() {
     };
   }, []);
 
-  const addText = (content = 'Double-click to edit', size = 28) => {
+  const addText = (content = 'Double-click to edit', size = 28, family = 'system-ui') => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const text = new IText(content, {
@@ -97,7 +147,7 @@ export default function Editor() {
       top: 200 + Math.random() * 40,
       fontSize: size,
       fill: '#0f172a',
-      fontFamily: 'system-ui',
+      fontFamily: family,
     });
     canvas.add(text);
     canvas.setActiveObject(text);
@@ -173,9 +223,16 @@ export default function Editor() {
       const then = new IText('THEN', { left: 420, top: 140, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
       const choice = new IText('Choice', { left: 420, top: 200, fontSize: 20 });
       canvas.add(first, task, then, choice);
+    } else if (name === 'Communication Board') {
+      const title = new IText('I want...', { left: 260, top: 60, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
+      const food = new IText('🍎 Food', { left: 140, top: 160, fontSize: 22 });
+      const bath = new IText('🚽 Bathroom', { left: 340, top: 160, fontSize: 22 });
+      const drink = new IText('💧 Drink', { left: 140, top: 240, fontSize: 22 });
+      const brk = new IText('🛑 Break', { left: 340, top: 240, fontSize: 22 });
+      canvas.add(title, food, bath, drink, brk);
     }
     canvas.renderAll();
-    save();
+    pushHistory();
   };
 
   const deleteSelected = () => {
@@ -191,7 +248,7 @@ export default function Editor() {
     if (!canvas || !selected) return;
     selected.set(props);
     canvas.renderAll();
-    save();
+    pushHistory();
   };
 
   const setBackground = (color: string) => {
@@ -200,7 +257,7 @@ export default function Editor() {
     canvas.backgroundColor = color;
     setBgColor(color);
     canvas.renderAll();
-    save();
+    pushHistory();
   };
 
   const align = (dir: string) => {
@@ -219,7 +276,7 @@ export default function Editor() {
       if (dir === 'bottom') obj.set({ top: canvasH - (obj.height || 0) * (obj.scaleY || 1) - 40 });
     });
     canvas.renderAll();
-    save();
+    pushHistory();
   };
 
   const toggleLock = () => {
@@ -233,7 +290,7 @@ export default function Editor() {
       lockScalingY: locked,
     });
     fabricRef.current?.renderAll();
-    save();
+    pushHistory();
     setSelected({ ...selected });
   };
 
@@ -241,7 +298,7 @@ export default function Editor() {
     if (!selected) return;
     selected.set({ visible: !selected.visible });
     fabricRef.current?.renderAll();
-    save();
+    pushHistory();
     setSelected({ ...selected });
   };
 
@@ -284,6 +341,14 @@ export default function Editor() {
     a.click();
   };
 
+  const saveToCloud = () => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const json = canvas.toJSON();
+    console.log('Ready for Supabase:', json);
+    alert('Cloud save ready — connect Supabase env vars to enable.');
+  };
+
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden">
       <div className="w-60 bg-white border-r flex flex-col shrink-0 overflow-y-auto">
@@ -313,6 +378,7 @@ export default function Editor() {
           <div className="text-xs font-semibold text-slate-500 mb-2 uppercase">Templates</div>
           <button onClick={() => loadTemplate('Visual Schedule')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Visual Schedule</button>
           <button onClick={() => loadTemplate('First-Then')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">First-Then</button>
+          <button onClick={() => loadTemplate('Communication Board')} className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-teal-50">Communication Board</button>
         </div>
 
         <div className="p-3 border-b">
@@ -321,8 +387,13 @@ export default function Editor() {
         </div>
 
         <div className="p-3 mt-auto space-y-2 border-t">
+          <div className="flex gap-1">
+            <button onClick={undo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Undo</button>
+            <button onClick={redo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Redo</button>
+          </div>
           <button onClick={deleteSelected} className="w-full py-2 bg-red-500 text-white rounded-lg text-sm">Delete</button>
           <button onClick={exportPNG} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm">Export PNG</button>
+          <button onClick={saveToCloud} className="w-full py-2 text-sm border rounded-lg text-slate-600">Save to Cloud</button>
         </div>
       </div>
 
@@ -382,10 +453,25 @@ export default function Editor() {
                 <input type="color" value={selected.fill || '#000000'} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-9 mt-1 rounded cursor-pointer" />
               </div>
               {selected.type === 'i-text' && (
-                <div>
-                  <label className="text-xs text-slate-500">Font size</label>
-                  <input type="number" value={selected.fontSize || 24} onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })} className="w-full border rounded px-2 py-1 text-sm mt-1" />
-                </div>
+                <>
+                  <div>
+                    <label className="text-xs text-slate-500">Font</label>
+                    <select
+                      value={selected.fontFamily || 'system-ui'}
+                      onChange={(e) => updateSelected({ fontFamily: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm mt-1"
+                    >
+                      <option value="system-ui">System</option>
+                      <option value="Georgia, serif">Serif</option>
+                      <option value="'Comic Sans MS', cursive">Friendly</option>
+                      <option value="monospace">Mono</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Font size</label>
+                    <input type="number" value={selected.fontSize || 24} onChange={(e) => updateSelected({ fontSize: Number(e.target.value) })} className="w-full border rounded px-2 py-1 text-sm mt-1" />
+                  </div>
+                </>
               )}
               <div>
                 <label className="text-xs text-slate-500">Opacity</label>
