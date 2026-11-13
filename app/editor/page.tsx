@@ -186,7 +186,7 @@ export default function Editor() {
   const addRect = () => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const rect = new Rect({ left: 250, top: 180, width: 180, height: 100, fill: '#0f766e', rx: 12, ry: 12 });
+    const rect = new Rect({ left: 250, top: 180, width: 180, height: 100, fill: '#0f766e', rx: 0, ry: 0 });
     canvas.add(rect); canvas.setActiveObject(rect); canvas.renderAll();
   };
 
@@ -250,7 +250,7 @@ export default function Editor() {
     } else if (name === 'Token Board') {
       const title = new IText('Token Board', { left: 280, top: 80, fontSize: 28, fill: '#0f766e', fontWeight: 'bold' });
       for (let i = 0; i < 5; i++) {
-        const box = new Rect({ left: 140 + i * 110, top: 180, width: 90, height: 90, fill: '#f8fafc', stroke: '#cbd5e1', strokeWidth: 2, rx: 8, ry: 8 });
+        const box = new Rect({ left: 140 + i * 110, top: 180, width: 90, height: 90, fill: '#f8fafc', stroke: '#cbd5e1', strokeWidth: 2, rx: 0, ry: 0 });
         canvas.add(box);
       }
       canvas.add(title);
@@ -488,7 +488,7 @@ export default function Editor() {
         <div className="px-4 py-3 border-b border-slate-100 font-medium text-slate-800">Layers</div>
         <div className="flex-1 overflow-y-auto p-3 max-h-48">
           {objects.length === 0 && (
-            <div className="text-sm text-slate-400 text-center py-6">No objects yet</div>
+            <div className="text-sm text-slate-400 text-center py-6">No objects yet<br/><span className="text-xs">Add text or a shape to start</span></div>
           )}
           {objects.map((obj, i) => (
             <div
@@ -545,6 +545,20 @@ export default function Editor() {
                 <label className="text-xs text-slate-500 block mb-1">Fill</label>
                 <input type="color" value={selected.fill || '#000000'} onChange={(e) => updateSelected({ fill: e.target.value })} className="w-full h-9 rounded-lg border border-slate-200 cursor-pointer" />
               </div>
+              {selected.type === 'rect' && (
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">Corner radius</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="50"
+                    value={selected.rx || 0}
+                    onChange={(e) => updateSelected({ rx: Number(e.target.value), ry: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                  <div className="text-xs text-slate-400 text-right">{selected.rx || 0}px</div>
+                </div>
+              )}
               {selected.type === 'i-text' && (
                 <>
                   <div>
