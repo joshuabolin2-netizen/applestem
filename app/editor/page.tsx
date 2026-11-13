@@ -17,6 +17,8 @@ export default function Editor() {
   const [pageSize, setPageSize] = useState({ w: 800, h: 600, name: 'Square' });
   const [renaming, setRenaming] = useState<any>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Set<any>>(new Set());
+  const [editingGroup, setEditingGroup] = useState<any>(null);
   const isRestoring = useRef(false);
   const guidesRef = useRef<any[]>([]);
 
@@ -155,6 +157,8 @@ export default function Editor() {
       }
       if (meta && e.key === ']') { e.preventDefault(); bringForward(); }
       if (meta && e.key === '[') { e.preventDefault(); sendBackward(); }
+      if (meta && e.key === 'g') { e.preventDefault(); groupSelected(); }
+      if (meta && e.key === 'G') { e.preventDefault(); ungroup(); }
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && canvas.getActiveObject()) {
         e.preventDefault();
         const obj = canvas.getActiveObject()!;
@@ -381,20 +385,52 @@ export default function Editor() {
     if (!canvas) return;
     const active = canvas.getActiveObjects();
     if (active.length < 2) return;
-    const group = new Group(active);
+    const group = new Group(active, { name: `Group ${objects.filter(o => o.type === 'group').length + 1}` });
     active.forEach((obj) => canvas.remove(obj));
     canvas.add(group);
     canvas.setActiveObject(group);
     canvas.renderAll();
+    setExpandedGroups(prev => new Set(prev).add(group));
   };
 
   const ungroup = () => {
     const canvas = fabricRef.current;
     if (!canvas || !selected || selected.type !== 'group') return;
     const items = (selected as Group).getObjects();
+    const groupLeft = selected.left || 0;
+    const groupTop = selected.top || 0;
     canvas.remove(selected);
-    items.forEach((item) => canvas.add(item));
+    items.forEach((item) => {
+      item.set({ left: (item.left || 0) + groupLeft, top: (item.top || 0) + groupTop });
+      canvas.add(item);
+    });
     canvas.renderAll();
+    setExpandedGroups(prev => { const n = new Set(prev); n.delete(selected); return n; });
+  };
+
+  const enterGroup = (group: any) => {
+    if (group.type !== 'group') return;
+    setEditingGroup(group);
+    setExpandedGroups(prev => new Set(prev).add(group));
+    fabricRef.current?.setActiveObject(group);
+    fabricRef.current?.renderAll();
+    setSelected(group);
+  };
+
+  const exitGroup = () => {
+    setEditingGroup(null);
+    fabricRef.current?.discardActiveObject();
+    fabricRef.current?.renderAll();
+    setSelected(null);
+  };
+
+  const toggleExpand = (group: any) => {
+    setExpandedGroups(prev => {
+      const n = new Set(prev);
+      if (n.has(group)) n.delete(group);
+      else n.add(group);
+      return n;
+    });
   };
 
   const selectObject = (obj: any) => {
@@ -491,6 +527,56 @@ export default function Editor() {
     pushHistory();
   };
 
+  const renderLayerItem = (obj: any, depth = 0) => {
+    const isGroup = obj.type === 'group';
+    const isExpanded = expandedGroups.has(obj);
+    const children = isGroup ? (obj as Group).getObjects() : [];
+
+    return (
+      <div key={obj} style={{ paddingLeft: depth * 12 }}>
+        <div
+          draggable={depth === 0}
+          onDragStart={(e) => depth === 0 && onDragStart(e, objects.indexOf(obj))}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => depth === 0 && onDrop(e, objects.indexOf(obj))}
+          onClick={() => selectObject(obj)}
+          onDoubleClick={() => isGroup ? enterGroup(obj) : startRename(obj)}
+          className={`group px-2 py-1.5 text-sm rounded-lg cursor-pointer mb-0.5 flex items-center gap-1.5 ${selected === obj ? 'bg-teal-50 text-teal-900' : 'hover:bg-slate-50 text-slate-900'}`}
+        >
+          {isGroup ? (
+            <button onClick={(e) => { e.stopPropagation(); toggleExpand(obj); }} className="w-4 h-4 text-xs flex items-center justify-center hover:bg-slate-200 rounded">
+              {isExpanded ? '▼' : '▶'}
+            </button>
+          ) : (
+            <span className="w-4" />
+          )}
+          <span className="text-slate-400 cursor-grab text-xs">{depth === 0 ? '⠇' : ''}</span>
+          {renaming === obj ? (
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => e.key === 'Enter' && commitRename()}
+              className="flex-1 border border-teal-300 rounded px-1 py-0.5 text-sm"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="flex-1 truncate">{getLabel(obj)}</span>
+          )}
+          {isGroup && <span className="text-[10px] text-slate-500">{children.length}</span>}
+          <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="opacity-0 group-hover:opacity-100 text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded" title="Toggle visibility">
+            {obj.visible === false ? '🙈' : '👁'}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${obj.lockMovementX ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} title="Toggle lock">
+            {obj.lockMovementX ? '🔒' : '🔓'}
+          </button>
+        </div>
+        {isGroup && isExpanded && children.map((child: any) => renderLayerItem(child, depth + 1))}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-screen bg-[#f4f5f7] overflow-hidden font-sans text-slate-900">
       <div className="w-16 bg-white border-r border-slate-200 flex flex-col items-center py-3 shrink-0">
@@ -576,6 +662,9 @@ export default function Editor() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-2 shrink-0">
+          {editingGroup && (
+            <button onClick={exitGroup} className="px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 rounded-md hover:bg-teal-100">← Exit group</button>
+          )}
           {selected ? (
             <>
               <button onClick={duplicateSelected} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Duplicate</button>
@@ -595,6 +684,13 @@ export default function Editor() {
                   <div className="w-px h-6 bg-slate-200 mx-1" />
                   <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`px-2 py-1 text-sm font-bold rounded ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>B</button>
                   <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`px-2 py-1 text-sm italic rounded ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>I</button>
+                </>
+              )}
+              {selected.type === 'group' && (
+                <>
+                  <div className="w-px h-6 bg-slate-200 mx-1" />
+                  <button onClick={() => enterGroup(selected)} className="px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-50 rounded-md">Enter</button>
+                  <button onClick={ungroup} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Ungroup</button>
                 </>
               )}
             </>
@@ -633,48 +729,24 @@ export default function Editor() {
       <div className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0">
         <div className="px-4 py-3 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
           Layers
-          <span className="text-xs font-normal text-slate-500">Drag to reorder</span>
+          <span className="text-xs font-normal text-slate-500">Cmd+G group</span>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
           {objects.length === 0 && (
             <div className="text-sm text-slate-700 text-center py-8">No objects yet</div>
           )}
-          {objects.map((obj, i) => (
-            <div
-              key={i}
-              draggable
-              onDragStart={(e) => onDragStart(e, i)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => onDrop(e, i)}
-              onClick={() => selectObject(obj)}
-              onDoubleClick={() => startRename(obj)}
-              className={`group px-2 py-2 text-sm rounded-lg cursor-pointer mb-1 flex items-center gap-2 ${selected === obj ? 'bg-teal-50 text-teal-900' : 'hover:bg-slate-50 text-slate-900'}`}
-            >
-              <span className="text-slate-400 cursor-grab text-xs">⠇</span>
-              {renaming === obj ? (
-                <input
-                  autoFocus
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => e.key === 'Enter' && commitRename()}
-                  className="flex-1 border border-teal-300 rounded px-1 py-0.5 text-sm"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <span className="flex-1 truncate">{getLabel(obj)}</span>
-              )}
-              <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="opacity-0 group-hover:opacity-100 text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded" title="Toggle visibility">
-                {obj.visible === false ? '🙈' : '👁'}
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${obj.lockMovementX ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} title="Toggle lock">
-                {obj.lockMovementX ? '🔒' : '🔓'}
-              </button>
-            </div>
-          ))}
+          {objects.map((obj) => renderLayerItem(obj))}
         </div>
         <div className="p-3 border-t border-slate-200 space-y-2">
-          <div className="text-xs font-semibold text-slate-800">Layer order</div>
+          <div className="text-xs font-semibold text-slate-800">Grouping</div>
+          <div className="grid grid-cols-2 gap-1">
+            <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Group</button>
+            <button onClick={ungroup} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Ungroup</button>
+            {selected?.type === 'group' && (
+              <button onClick={() => enterGroup(selected)} className="col-span-2 py-1.5 text-xs border border-teal-300 bg-teal-50 text-teal-800 rounded hover:bg-teal-100 font-medium">Enter group</button>
+            )}
+          </div>
+          <div className="text-xs font-semibold text-slate-800 pt-1">Layer order</div>
           <div className="grid grid-cols-2 gap-1">
             <button onClick={bringForward} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Up</button>
             <button onClick={sendBackward} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Down</button>
@@ -687,17 +759,11 @@ export default function Editor() {
               <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full" />
             </div>
           )}
-          <div className="text-xs font-semibold text-slate-800 pt-2">Align</div>
+          <div className="text-xs font-semibold text-slate-800 pt-1">Align</div>
           <div className="grid grid-cols-3 gap-1">
             {['left','center','right','top','middle','bottom'].map(d => (
               <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 capitalize font-medium">{d}</button>
             ))}
-          </div>
-          <div className="grid grid-cols-2 gap-1">
-            <button onClick={() => distribute('horizontal')} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Dist H</button>
-            <button onClick={() => distribute('vertical')} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Dist V</button>
-            <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Group</button>
-            <button onClick={ungroup} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Ungroup</button>
           </div>
           {selected?.type === 'rect' && (
             <div>
