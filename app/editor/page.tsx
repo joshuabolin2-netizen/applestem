@@ -14,6 +14,7 @@ export default function Editor() {
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
   const [activePanel, setActivePanel] = useState<'text'|'shapes'|'symbols'|'templates'|null>('text');
+  const [pageSize, setPageSize] = useState({ w: 800, h: 600, name: 'Square' });
   const isRestoring = useRef(false);
   const guidesRef = useRef<any[]>([]);
 
@@ -312,9 +313,7 @@ export default function Editor() {
     const sorted = [...active].sort((a, b) => dir === 'horizontal' ? (a.left || 0) - (b.left || 0) : (a.top || 0) - (b.top || 0));
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
-    const total = dir === 'horizontal'
-      ? ((last.left || 0) - (first.left || 0))
-      : ((last.top || 0) - (first.top || 0));
+    const total = dir === 'horizontal' ? ((last.left || 0) - (first.left || 0)) : ((last.top || 0) - (first.top || 0));
     const step = total / (sorted.length - 1);
     sorted.forEach((obj, i) => {
       if (dir === 'horizontal') obj.set({ left: (first.left || 0) + step * i });
@@ -384,9 +383,19 @@ export default function Editor() {
     const newZoom = Math.min(2, Math.max(0.4, zoom + delta));
     setZoom(newZoom);
     canvas.setZoom(newZoom);
-    canvas.setWidth(800 * newZoom);
-    canvas.setHeight(600 * newZoom);
+    canvas.setWidth(pageSize.w * newZoom);
+    canvas.setHeight(pageSize.h * newZoom);
     canvas.renderAll();
+  };
+
+  const setPage = (w: number, h: number, name: string) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    setPageSize({ w, h, name });
+    canvas.setWidth(w * zoom);
+    canvas.setHeight(h * zoom);
+    canvas.renderAll();
+    if (showGrid) drawGrid();
   };
 
   const exportPNG = () => {
@@ -477,6 +486,12 @@ export default function Editor() {
               </div>
             )}
             <div className="pt-3 border-t border-slate-200">
+              <div className="text-xs font-semibold text-slate-800 mb-2">Page size</div>
+              <div className="grid grid-cols-2 gap-1 mb-3">
+                {[['Square',800,600],['Landscape',900,560],['Portrait',560,800],['A4',595,842]].map(([n,w,h]) => (
+                  <button key={n as string} onClick={() => setPage(w as number, h as number, n as string)} className={`py-1.5 text-xs border rounded font-medium ${pageSize.name === n ? 'bg-teal-50 border-teal-300 text-teal-800' : 'border-slate-300 hover:bg-slate-50'}`}>{n}</button>
+                ))}
+              </div>
               <div className="text-xs font-semibold text-slate-800 mb-2">Background</div>
               <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-9 rounded-lg border border-slate-300 cursor-pointer" />
               <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer">
@@ -516,13 +531,21 @@ export default function Editor() {
             <span className="text-sm text-slate-600">Select an object to edit</span>
           )}
           <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-slate-600">{pageSize.name}</span>
             <button onClick={exportPNG} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Export</button>
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center p-10 overflow-auto">
+        <div className="flex-1 flex items-center justify-center p-10 overflow-auto relative">
           <div className="relative shadow-2xl rounded-lg">
             <canvas ref={canvasEl} style={{ background: '#ffffff' }} />
+            {selected && (
+              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white shadow-lg border border-slate-200 rounded-full px-2 py-1 z-10">
+                <button onClick={duplicateSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Duplicate">⎘</button>
+                <button onClick={toggleLock} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Lock">🔒</button>
+                <button onClick={deleteSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-red-50 text-red-600 rounded-full" title="Delete">🗑</button>
+              </div>
+            )}
           </div>
         </div>
 
