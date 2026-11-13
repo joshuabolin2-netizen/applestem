@@ -19,8 +19,19 @@ export default function Editor() {
   const [renameValue, setRenameValue] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<any>>(new Set());
   const [editingGroup, setEditingGroup] = useState<any>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showLayers, setShowLayers] = useState(true);
+  const [lockVersion, setLockVersion] = useState(0);
   const isRestoring = useRef(false);
   const guidesRef = useRef<any[]>([]);
+  const tempGuidesRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   const refreshObjects = () => {
     const canvas = fabricRef.current;
@@ -43,21 +54,29 @@ export default function Editor() {
     refreshObjects();
   };
 
+  const clearTempGuides = () => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    tempGuidesRef.current.forEach(g => canvas.remove(g));
+    tempGuidesRef.current = [];
+    canvas.renderAll();
+  };
+
   const drawGrid = () => {
     const canvas = fabricRef.current;
     if (!canvas || !showGrid) return;
     guidesRef.current.forEach(g => canvas.remove(g));
     guidesRef.current = [];
     const gridSize = 40;
-    for (let i = 0; i < canvas.width! / gridSize; i++) {
-      const line = new Line([i * gridSize, 0, i * gridSize, canvas.height!], {
+    for (let i = 0; i < (canvas.width || 800) / gridSize; i++) {
+      const line = new Line([i * gridSize, 0, i * gridSize, canvas.height || 600], {
         stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
       });
       canvas.add(line);
       guidesRef.current.push(line);
     }
-    for (let i = 0; i < canvas.height! / gridSize; i++) {
-      const line = new Line([0, i * gridSize, canvas.width!, i * gridSize], {
+    for (let i = 0; i < (canvas.height || 600) / gridSize; i++) {
+      const line = new Line([0, i * gridSize, canvas.width || 800, i * gridSize], {
         stroke: '#e2e8f0', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
       });
       canvas.add(line);
@@ -72,6 +91,7 @@ export default function Editor() {
     const canvas = fabricRef.current;
     if (!canvas) return;
     isRestoring.current = true;
+    clearTempGuides();
     const prev = history[historyIndex - 1];
     canvas.loadFromJSON(prev).then(() => {
       canvas.renderAll();
@@ -88,6 +108,7 @@ export default function Editor() {
     const canvas = fabricRef.current;
     if (!canvas) return;
     isRestoring.current = true;
+    clearTempGuides();
     const next = history[historyIndex + 1];
     canvas.loadFromJSON(next).then(() => {
       canvas.renderAll();
@@ -107,6 +128,7 @@ export default function Editor() {
       height: 600,
       backgroundColor: '#ffffff',
       selection: true,
+      preserveObjectStacking: true,
     });
 
     fabricRef.current = canvas;
@@ -126,13 +148,13 @@ export default function Editor() {
       if (showGrid) drawGrid();
     }
 
-    canvas.on('object:modified', pushHistory);
+    canvas.on('object:modified', () => { clearTempGuides(); pushHistory(); });
     canvas.on('object:added', (e) => { if (!e.target?.excludeFromExport) pushHistory(); });
     canvas.on('object:removed', pushHistory);
 
     canvas.on('selection:created', (e) => { setSelected(e.selected?.[0] || null); refreshObjects(); });
     canvas.on('selection:updated', (e) => { setSelected(e.selected?.[0] || null); refreshObjects(); });
-    canvas.on('selection:cleared', () => { setSelected(null); refreshObjects(); });
+    canvas.on('selection:cleared', () => { setSelected(null); clearTempGuides(); refreshObjects(); });
 
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -158,7 +180,7 @@ export default function Editor() {
       if (meta && e.key === ']') { e.preventDefault(); bringForward(); }
       if (meta && e.key === '[') { e.preventDefault(); sendBackward(); }
       if (meta && e.key === 'g') { e.preventDefault(); groupSelected(); }
-      if (meta && e.key === 'G') { e.preventDefault(); ungroup(); }
+      if (meta && e.shiftKey && e.key === 'G') { e.preventDefault(); ungroup(); }
       if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key) && canvas.getActiveObject()) {
         e.preventDefault();
         const obj = canvas.getActiveObject()!;
@@ -178,7 +200,7 @@ export default function Editor() {
     };
   }, []);
 
-  useEffect(() => { if (fabricRef.current) drawGrid(); }, [showGrid]);
+  useEffect(() => { if (fabricRef.current) { clearTempGuides(); drawGrid(); } }, [showGrid]);
 
   const addText = (content = 'Double-click to edit', size = 28, family = 'system-ui') => {
     const canvas = fabricRef.current;
@@ -233,6 +255,7 @@ export default function Editor() {
   const loadTemplate = (name: string) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    clearTempGuides();
     canvas.clear();
     canvas.backgroundColor = '#ffffff';
     setBgColor('#ffffff');
@@ -283,6 +306,7 @@ export default function Editor() {
     selected.set(props);
     canvas.renderAll();
     pushHistory();
+    setLockVersion(v => v + 1);
   };
 
   const setBackground = (color: string) => {
@@ -297,6 +321,7 @@ export default function Editor() {
   const align = (dir: string) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    clearTempGuides();
     const active = canvas.getActiveObjects();
     if (active.length < 1) return;
     const canvasW = canvas.width || 800;
@@ -316,6 +341,7 @@ export default function Editor() {
   const distribute = (dir: 'horizontal' | 'vertical') => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+    clearTempGuides();
     const active = canvas.getActiveObjects();
     if (active.length < 3) return;
     const sorted = [...active].sort((a, b) => dir === 'horizontal' ? (a.left || 0) - (b.left || 0) : (a.top || 0) - (b.top || 0));
@@ -367,17 +393,26 @@ export default function Editor() {
     const target = obj || selected;
     if (!target) return;
     const locked = !target.lockMovementX;
-    target.set({ lockMovementX: locked, lockMovementY: locked, lockRotation: locked, lockScalingX: locked, lockScalingY: locked });
+    target.set({
+      lockMovementX: locked,
+      lockMovementY: locked,
+      lockRotation: locked,
+      lockScalingX: locked,
+      lockScalingY: locked,
+      hasControls: !locked,
+      selectable: true,
+    });
     fabricRef.current?.renderAll();
     pushHistory();
-    setSelected({ ...target });
+    setLockVersion(v => v + 1);
+    setSelected({ ...target, _lock: locked });
   };
 
   const toggleVisible = (obj: any) => {
     obj.set({ visible: !obj.visible });
     fabricRef.current?.renderAll();
     pushHistory();
-    setSelected({ ...obj });
+    setLockVersion(v => v + 1);
   };
 
   const groupSelected = () => {
@@ -508,37 +543,45 @@ export default function Editor() {
     return obj.type;
   };
 
+  const moveLayer = (fromIdx: number, toIdx: number) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const all = canvas.getObjects().filter(o => !o.excludeFromExport);
+    const fromObj = all[all.length - 1 - fromIdx];
+    const targetObj = all[all.length - 1 - toIdx];
+    if (!fromObj || !targetObj || fromObj === targetObj) return;
+    const targetIndex = canvas.getObjects().indexOf(targetObj);
+    canvas.moveObjectTo(fromObj, targetIndex);
+    canvas.renderAll();
+    pushHistory();
+  };
+
   const onDragStart = (e: React.DragEvent, idx: number) => {
+    e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(idx));
   };
 
   const onDrop = (e: React.DragEvent, targetIdx: number) => {
     e.preventDefault();
-    const canvas = fabricRef.current;
-    if (!canvas) return;
     const fromIdx = Number(e.dataTransfer.getData('text/plain'));
-    if (fromIdx === targetIdx) return;
-    const all = canvas.getObjects().filter(o => !o.excludeFromExport);
-    const fromObj = all[all.length - 1 - fromIdx];
-    const targetObj = all[all.length - 1 - targetIdx];
-    if (!fromObj || !targetObj) return;
-    canvas.moveObjectTo(fromObj, canvas.getObjects().indexOf(targetObj));
-    canvas.renderAll();
-    pushHistory();
+    if (isNaN(fromIdx) || fromIdx === targetIdx) return;
+    moveLayer(fromIdx, targetIdx);
   };
 
   const renderLayerItem = (obj: any, depth = 0) => {
     const isGroup = obj.type === 'group';
     const isExpanded = expandedGroups.has(obj);
     const children = isGroup ? (obj as Group).getObjects() : [];
+    const idx = objects.indexOf(obj);
+    const isLocked = !!obj.lockMovementX;
 
     return (
       <div key={obj} style={{ paddingLeft: depth * 12 }}>
         <div
-          draggable={depth === 0}
-          onDragStart={(e) => depth === 0 && onDragStart(e, objects.indexOf(obj))}
+          draggable={!isMobile && depth === 0}
+          onDragStart={(e) => !isMobile && depth === 0 && onDragStart(e, idx)}
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => depth === 0 && onDrop(e, objects.indexOf(obj))}
+          onDrop={(e) => !isMobile && depth === 0 && onDrop(e, idx)}
           onClick={() => selectObject(obj)}
           onDoubleClick={() => isGroup ? enterGroup(obj) : startRename(obj)}
           className={`group px-2 py-1.5 text-sm rounded-lg cursor-pointer mb-0.5 flex items-center gap-1.5 ${selected === obj ? 'bg-teal-50 text-teal-900' : 'hover:bg-slate-50 text-slate-900'}`}
@@ -550,7 +593,7 @@ export default function Editor() {
           ) : (
             <span className="w-4" />
           )}
-          <span className="text-slate-400 cursor-grab text-xs">{depth === 0 ? '⠇' : ''}</span>
+          {!isMobile && depth === 0 && <span className="text-slate-400 cursor-grab text-xs">⠇</span>}
           {renaming === obj ? (
             <input
               autoFocus
@@ -565,11 +608,15 @@ export default function Editor() {
             <span className="flex-1 truncate">{getLabel(obj)}</span>
           )}
           {isGroup && <span className="text-[10px] text-slate-500">{children.length}</span>}
-          <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="opacity-0 group-hover:opacity-100 text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded" title="Toggle visibility">
+          <div className="flex gap-0.5">
+            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.max(0, idx - 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded" title="Move up">↑</button>
+            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.min(objects.length - 1, idx + 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded" title="Move down">↓</button>
+          </div>
+          <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded" title="Toggle visibility">
             {obj.visible === false ? '🙈' : '👁'}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${obj.lockMovementX ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} title="Toggle lock">
-            {obj.lockMovementX ? '🔒' : '🔓'}
+          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${isLocked ? 'text-amber-600' : ''}`} title={isLocked ? 'Unlock' : 'Lock'}>
+            {isLocked ? '🔒' : '🔓'}
           </button>
         </div>
         {isGroup && isExpanded && children.map((child: any) => renderLayerItem(child, depth + 1))}
@@ -578,44 +625,46 @@ export default function Editor() {
   };
 
   return (
-    <div className="flex h-screen bg-[#f4f5f7] overflow-hidden font-sans text-slate-900">
-      <div className="w-16 bg-white border-r border-slate-200 flex flex-col items-center py-3 shrink-0">
-        <div className="text-2xl mb-4">🍎</div>
-        {[
-          { id: 'text', icon: 'T', label: 'Text' },
-          { id: 'shapes', icon: '▢', label: 'Shapes' },
-          { id: 'symbols', icon: '☺', label: 'Symbols' },
-          { id: 'templates', icon: '▤', label: 'Templates' },
-        ].map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActivePanel(activePanel === item.id ? null : item.id as any)}
-            className={`w-12 h-12 flex flex-col items-center justify-center rounded-lg mb-1 text-xs font-medium transition-colors ${
-              activePanel === item.id ? 'bg-teal-50 text-teal-700' : 'text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            <span className="text-lg leading-none">{item.icon}</span>
-            <span className="text-[10px] mt-0.5">{item.label}</span>
-          </button>
-        ))}
-        <div className="mt-auto flex flex-col gap-1">
-          <button onClick={undo} className="w-10 h-10 text-slate-700 hover:bg-slate-50 rounded-lg text-sm">↺</button>
-          <button onClick={redo} className="w-10 h-10 text-slate-700 hover:bg-slate-50 rounded-lg text-sm">↻</button>
+    <div className="flex h-screen bg-[#f4f5f7] overflow-hidden font-sans text-slate-900 flex-col md:flex-row">
+      {!isMobile && (
+        <div className="w-16 bg-white border-r border-slate-200 flex flex-col items-center py-3 shrink-0">
+          <div className="text-2xl mb-4">🍎</div>
+          {[
+            { id: 'text', icon: 'T', label: 'Text' },
+            { id: 'shapes', icon: '▢', label: 'Shapes' },
+            { id: 'symbols', icon: '☺', label: 'Symbols' },
+            { id: 'templates', icon: '▤', label: 'Templates' },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActivePanel(activePanel === item.id ? null : item.id as any)}
+              className={`w-12 h-12 flex flex-col items-center justify-center rounded-lg mb-1 text-xs font-medium transition-colors ${
+                activePanel === item.id ? 'bg-teal-50 text-teal-700' : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <span className="text-lg leading-none">{item.icon}</span>
+              <span className="text-[10px] mt-0.5">{item.label}</span>
+            </button>
+          ))}
+          <div className="mt-auto flex flex-col gap-1">
+            <button onClick={undo} className="w-10 h-10 text-slate-700 hover:bg-slate-50 rounded-lg text-sm">↺</button>
+            <button onClick={redo} className="w-10 h-10 text-slate-700 hover:bg-slate-50 rounded-lg text-sm">↻</button>
+          </div>
         </div>
-      </div>
+      )}
 
       {activePanel && (
-        <div className="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+        <div className={`${isMobile ? 'fixed inset-0 z-40 bg-white' : 'w-64'} bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto`}>
           <div className="px-4 py-3 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
             {activePanel === 'text' && 'Text'}
             {activePanel === 'shapes' && 'Shapes'}
             {activePanel === 'symbols' && 'Symbols'}
             {activePanel === 'templates' && 'Templates'}
-            <button onClick={() => setActivePanel(null)} className="text-slate-500 hover:text-slate-800">✕</button>
+            <button onClick={() => setActivePanel(null)} className="text-slate-500 hover:text-slate-800 text-lg">✕</button>
           </div>
           <div className="p-4 space-y-3">
             {activePanel === 'text' && (
-              <button onClick={() => addText()} className="w-full py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium">+ Add text</button>
+              <button onClick={() => addText()} className="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium">+ Add text</button>
             )}
             {activePanel === 'shapes' && (
               <div className="grid grid-cols-2 gap-2">
@@ -631,14 +680,14 @@ export default function Editor() {
             {activePanel === 'symbols' && (
               <div className="grid grid-cols-4 gap-2">
                 {[['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']].map(([e, l]) => (
-                  <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-xl border border-slate-300 rounded-lg hover:bg-teal-50" title={l}>{e}</button>
+                  <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-2xl border border-slate-300 rounded-lg hover:bg-teal-50" title={l}>{e}</button>
                 ))}
               </div>
             )}
             {activePanel === 'templates' && (
               <div className="space-y-1">
                 {['Visual Schedule','First-Then','Communication Board','Token Board'].map(name => (
-                  <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-2.5 text-sm font-medium rounded-lg hover:bg-slate-50">{name}</button>
+                  <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-3 py-3 text-sm font-medium rounded-lg hover:bg-slate-50">{name}</button>
                 ))}
               </div>
             )}
@@ -646,11 +695,11 @@ export default function Editor() {
               <div className="text-xs font-semibold text-slate-800 mb-2">Page size</div>
               <div className="grid grid-cols-2 gap-1 mb-3">
                 {[['Square',800,600],['Landscape',900,560],['Portrait',560,800],['A4',595,842]].map(([n,w,h]) => (
-                  <button key={n as string} onClick={() => setPage(w as number, h as number, n as string)} className={`py-1.5 text-xs border rounded font-medium ${pageSize.name === n ? 'bg-teal-50 border-teal-300 text-teal-800' : 'border-slate-300 hover:bg-slate-50'}`}>{n}</button>
+                  <button key={n as string} onClick={() => setPage(w as number, h as number, n as string)} className={`py-2 text-xs border rounded font-medium ${pageSize.name === n ? 'bg-teal-50 border-teal-300 text-teal-800' : 'border-slate-300 hover:bg-slate-50'}`}>{n}</button>
                 ))}
               </div>
               <div className="text-xs font-semibold text-slate-800 mb-2">Background</div>
-              <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-9 rounded-lg border border-slate-300 cursor-pointer" />
+              <input type="color" value={bgColor} onChange={(e) => setBackground(e.target.value)} className="w-full h-10 rounded-lg border border-slate-300 cursor-pointer" />
               <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer">
                 <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
                 Show grid
@@ -660,53 +709,41 @@ export default function Editor() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-2 shrink-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className="h-12 md:h-14 bg-white border-b border-slate-200 flex items-center px-2 md:px-4 gap-1 md:gap-2 shrink-0 overflow-x-auto">
           {editingGroup && (
-            <button onClick={exitGroup} className="px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 rounded-md hover:bg-teal-100">← Exit group</button>
+            <button onClick={exitGroup} className="px-2 py-1 text-xs md:text-sm font-medium text-teal-700 bg-teal-50 rounded-md hover:bg-teal-100 whitespace-nowrap">← Exit</button>
           )}
           {selected ? (
             <>
-              <button onClick={duplicateSelected} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Duplicate</button>
-              <button onClick={deleteSelected} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Delete</button>
-              <button onClick={() => toggleLock()} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
-              <div className="w-px h-6 bg-slate-200 mx-1" />
-              <button onClick={bringToFront} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Front</button>
-              <button onClick={sendToBack} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Back</button>
-              <div className="w-px h-6 bg-slate-200 mx-1" />
-              <div className="flex items-center gap-1">
-                {['#0f172a','#0f766e','#14b8a6','#f59e0b','#ef4444','#3b82f6'].map(c => (
-                  <button key={c} onClick={() => updateSelected({ fill: c })} className="w-6 h-6 rounded-full border border-slate-300" style={{ background: c }} />
-                ))}
-              </div>
+              <button onClick={duplicateSelected} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md whitespace-nowrap">Dup</button>
+              <button onClick={deleteSelected} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Del</button>
+              <button onClick={() => toggleLock()} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md whitespace-nowrap">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
+              <div className="w-px h-5 bg-slate-200 mx-1 hidden md:block" />
+              <button onClick={bringToFront} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Front</button>
+              <button onClick={sendToBack} className="px-2 py-1 text-xs md:text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Back</button>
               {selected.type === 'i-text' && (
                 <>
-                  <div className="w-px h-6 bg-slate-200 mx-1" />
-                  <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`px-2 py-1 text-sm font-bold rounded ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>B</button>
-                  <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`px-2 py-1 text-sm italic rounded ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>I</button>
+                  <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`px-2 py-1 text-xs md:text-sm font-bold rounded ${selected.fontWeight === 'bold' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>B</button>
+                  <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`px-2 py-1 text-xs md:text-sm italic rounded ${selected.fontStyle === 'italic' ? 'bg-slate-100' : 'hover:bg-slate-50'}`}>I</button>
                 </>
               )}
               {selected.type === 'group' && (
-                <>
-                  <div className="w-px h-6 bg-slate-200 mx-1" />
-                  <button onClick={() => enterGroup(selected)} className="px-3 py-1.5 text-sm font-medium text-teal-700 hover:bg-teal-50 rounded-md">Enter</button>
-                  <button onClick={ungroup} className="px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 rounded-md">Ungroup</button>
-                </>
+                <button onClick={() => enterGroup(selected)} className="px-2 py-1 text-xs md:text-sm font-medium text-teal-700 hover:bg-teal-50 rounded-md">Enter</button>
               )}
             </>
           ) : (
-            <span className="text-sm text-slate-600">Select an object to edit</span>
+            <span className="text-xs md:text-sm text-slate-600">Select to edit</span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-600">{pageSize.name}</span>
-            <button onClick={exportPNG} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">Export</button>
+            <button onClick={exportPNG} className="px-3 py-1.5 bg-slate-900 text-white text-xs md:text-sm font-medium rounded-lg hover:bg-slate-800">Export</button>
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center p-10 overflow-auto relative">
-          <div className="relative shadow-2xl rounded-lg">
-            <canvas ref={canvasEl} style={{ background: '#ffffff' }} />
-            {selected && (
+        <div className="flex-1 flex items-center justify-center p-2 md:p-6 overflow-auto">
+          <div className="relative shadow-xl md:shadow-2xl rounded-lg max-w-full">
+            <canvas ref={canvasEl} className="max-w-full h-auto" style={{ background: '#ffffff' }} />
+            {selected && !isMobile && (
               <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white shadow-lg border border-slate-200 rounded-full px-2 py-1 z-10">
                 <button onClick={duplicateSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Duplicate">⎘</button>
                 <button onClick={() => toggleLock()} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Lock">🔒</button>
@@ -716,63 +753,75 @@ export default function Editor() {
           </div>
         </div>
 
-        <div className="h-12 bg-white border-t border-slate-200 flex items-center px-4 gap-4 shrink-0">
-          <div className="flex items-center gap-2">
-            <button onClick={() => changeZoom(-0.1)} className="w-8 h-8 border border-slate-300 rounded hover:bg-slate-50 text-slate-800">−</button>
-            <span className="text-sm font-medium w-12 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => changeZoom(0.1)} className="w-8 h-8 border border-slate-300 rounded hover:bg-slate-50 text-slate-800">+</button>
+        <div className="h-10 md:h-12 bg-white border-t border-slate-200 flex items-center px-3 gap-3 shrink-0">
+          <div className="flex items-center gap-1">
+            <button onClick={() => changeZoom(-0.1)} className="w-7 h-7 border border-slate-300 rounded hover:bg-slate-50 text-slate-800 text-sm">−</button>
+            <span className="text-xs md:text-sm font-medium w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => changeZoom(0.1)} className="w-7 h-7 border border-slate-300 rounded hover:bg-slate-50 text-slate-800 text-sm">+</button>
           </div>
-          <div className="text-sm text-slate-600">{objects.length} object{objects.length !== 1 ? 's' : ''}</div>
+          <div className="text-xs md:text-sm text-slate-600">{objects.length} obj</div>
+          {isMobile && (
+            <button onClick={() => setShowLayers(!showLayers)} className="ml-auto text-xs px-2 py-1 border rounded">Layers</button>
+          )}
         </div>
       </div>
 
-      <div className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0">
-        <div className="px-4 py-3 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
-          Layers
-          <span className="text-xs font-normal text-slate-500">Cmd+G group</span>
-        </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          {objects.length === 0 && (
-            <div className="text-sm text-slate-700 text-center py-8">No objects yet</div>
-          )}
-          {objects.map((obj) => renderLayerItem(obj))}
-        </div>
-        <div className="p-3 border-t border-slate-200 space-y-2">
-          <div className="text-xs font-semibold text-slate-800">Grouping</div>
-          <div className="grid grid-cols-2 gap-1">
-            <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Group</button>
-            <button onClick={ungroup} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Ungroup</button>
-            {selected?.type === 'group' && (
-              <button onClick={() => enterGroup(selected)} className="col-span-2 py-1.5 text-xs border border-teal-300 bg-teal-50 text-teal-800 rounded hover:bg-teal-100 font-medium">Enter group</button>
+      {(showLayers || !isMobile) && (
+        <div className={`${isMobile ? 'fixed bottom-0 left-0 right-0 h-64 z-30 shadow-2xl' : 'w-72'} bg-white border-l border-slate-200 flex flex-col shrink-0`}>
+          <div className="px-3 py-2 border-b border-slate-200 font-semibold text-slate-900 text-sm flex items-center justify-between">
+            Layers
+            {isMobile && <button onClick={() => setShowLayers(false)} className="text-slate-500">✕</button>}
+          </div>
+          <div className="flex-1 overflow-y-auto p-2">
+            {objects.length === 0 && (
+              <div className="text-sm text-slate-700 text-center py-6">No objects yet</div>
+            )}
+            {objects.map((obj) => renderLayerItem(obj))}
+          </div>
+          <div className="p-2 border-t border-slate-200 space-y-2 max-h-40 overflow-y-auto">
+            <div className="text-xs font-semibold text-slate-800">Align</div>
+            <div className="grid grid-cols-3 gap-1">
+              {['left','center','right','top','middle','bottom'].map(d => (
+                <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 capitalize font-medium">{d}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <button onClick={groupSelected} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Group</button>
+              <button onClick={ungroup} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Ungroup</button>
+            </div>
+            {selected && (
+              <div>
+                <div className="text-xs font-semibold text-slate-800 mb-1">Opacity</div>
+                <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full" />
+              </div>
             )}
           </div>
-          <div className="text-xs font-semibold text-slate-800 pt-1">Layer order</div>
-          <div className="grid grid-cols-2 gap-1">
-            <button onClick={bringForward} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Up</button>
-            <button onClick={sendBackward} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Down</button>
-            <button onClick={bringToFront} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Front</button>
-            <button onClick={sendToBack} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 font-medium">Back</button>
-          </div>
-          {selected && (
-            <div>
-              <div className="text-xs font-semibold text-slate-800 mb-1">Opacity</div>
-              <input type="range" min="0" max="1" step="0.05" value={selected.opacity ?? 1} onChange={(e) => updateSelected({ opacity: Number(e.target.value) })} className="w-full" />
-            </div>
-          )}
-          <div className="text-xs font-semibold text-slate-800 pt-1">Align</div>
-          <div className="grid grid-cols-3 gap-1">
-            {['left','center','right','top','middle','bottom'].map(d => (
-              <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border border-slate-300 rounded hover:bg-slate-50 capitalize font-medium">{d}</button>
-            ))}
-          </div>
-          {selected?.type === 'rect' && (
-            <div>
-              <div className="text-xs font-semibold text-slate-800 mb-1">Corner radius</div>
-              <input type="range" min="0" max="40" value={selected.rx || 0} onChange={(e) => updateSelected({ rx: Number(e.target.value), ry: Number(e.target.value) })} className="w-full" />
-            </div>
-          )}
         </div>
-      </div>
+      )}
+
+      {isMobile && (
+        <div className="h-14 bg-white border-t border-slate-200 flex items-center justify-around shrink-0">
+          {[
+            { id: 'text', icon: 'T', label: 'Text' },
+            { id: 'shapes', icon: '▢', label: 'Shapes' },
+            { id: 'symbols', icon: '☺', label: 'Symbols' },
+            { id: 'templates', icon: '▤', label: 'Templates' },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActivePanel(activePanel === item.id ? null : item.id as any)}
+              className={`flex flex-col items-center justify-center text-xs ${activePanel === item.id ? 'text-teal-700' : 'text-slate-600'}`}
+            >
+              <span className="text-lg">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+          <button onClick={() => setShowLayers(!showLayers)} className="flex flex-col items-center justify-center text-xs text-slate-600">
+            <span className="text-lg">☰</span>
+            <span>Layers</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
