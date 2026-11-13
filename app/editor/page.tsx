@@ -35,6 +35,10 @@ export default function Editor() {
   const [future, setFuture] = useState<CanvasItem[][]>([]);
   const [zoom, setZoom] = useState(1);
   const [clipboard, setClipboard] = useState<CanvasItem[]>([]);
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [gridSize, setGridSize] = useState(20);
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] });
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const selected = items.filter(i => selectedIds.includes(i.id));
@@ -253,10 +257,10 @@ export default function Editor() {
     } else if (name === 'Communication Board') {
       news = [
         { id: base, type: 'text', content: 'I want...', x: 260, y: 80, width: 200, height: 40, rotation: 0, fontSize: 22, color: '#0f766e', fontWeight: 'bold' },
-        { id: base + 1, type: 'text', content: '🍎 Food', x: 160, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
-        { id: base + 2, type: 'text', content: '🚽 Bathroom', x: 340, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
-        { id: base + 3, type: 'text', content: '💧 Drink', x: 160, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
-        { id: base + 4, type: 'text', content: '🛑 Break', x: 340, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 1, type: 'text', content: '\uD83C\uDF4E Food', x: 160, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 2, type: 'text', content: '\uD83D\uDEBD Bathroom', x: 340, y: 160, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 3, type: 'text', content: '\uD83D\uDCA7 Drink', x: 160, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
+        { id: base + 4, type: 'text', content: '\uD83D\uDED1 Break', x: 340, y: 230, width: 140, height: 44, rotation: 0, fontSize: 18 },
       ];
     }
 
@@ -291,15 +295,82 @@ export default function Editor() {
     if (dragging && selectedIds.length > 0) {
       const primaryItem = items.find(i => i.id === selectedIds[0]);
       if (!primaryItem) return;
-      const dx = e.clientX - offset.x - primaryItem.x;
-      const dy = e.clientY - offset.y - primaryItem.y;
+
+      const rawDx = e.clientX - offset.x - primaryItem.x;
+      const rawDy = e.clientY - offset.y - primaryItem.y;
+
+      let newX = primaryItem.x + rawDx;
+      let newY = primaryItem.y + rawDy;
+
+      const SNAP = 6;
+      const newGuides = { v: [] as number[], h: [] as number[] };
+
+      // Grid snap
+      if (snapToGrid && gridSize > 0) {
+        newX = Math.round(newX / gridSize) * gridSize;
+        newY = Math.round(newY / gridSize) * gridSize;
+      }
+
+      // Object & canvas snap + guides
+      const others = items.filter(i => !selectedIds.includes(i.id) && !i.hidden);
+      const canvasW = 900, canvasH = 650;
+
+      const candidatesX = [0, canvasW / 2, canvasW];
+      const candidatesY = [0, canvasH / 2, canvasH];
+
+      others.forEach(o => {
+        candidatesX.push(o.x, o.x + o.width / 2, o.x + o.width);
+        candidatesY.push(o.y, o.y + o.height / 2, o.y + o.height);
+      });
+
+      // Snap X
+      let bestDx = SNAP + 1;
+      let snapX = newX;
+      candidatesX.forEach(cx => {
+        const edges = [newX, newX + primaryItem.width / 2, newX + primaryItem.width];
+        edges.forEach(ex => {
+          const d = Math.abs(ex - cx);
+          if (d < bestDx) {
+            bestDx = d;
+            snapX = newX + (cx - ex);
+            if (Math.abs(cx - canvasW / 2) < 1 || others.some(o => Math.abs(o.x + o.width / 2 - cx) < 1)) {
+              newGuides.v.push(cx);
+            }
+          }
+        });
+      });
+      if (bestDx <= SNAP) newX = snapX;
+
+      // Snap Y
+      let bestDy = SNAP + 1;
+      let snapY = newY;
+      candidatesY.forEach(cy => {
+        const edges = [newY, newY + primaryItem.height / 2, newY + primaryItem.height];
+        edges.forEach(ey => {
+          const d = Math.abs(ey - cy);
+          if (d < bestDy) {
+            bestDy = d;
+            snapY = newY + (cy - ey);
+            if (Math.abs(cy - canvasH / 2) < 1 || others.some(o => Math.abs(o.y + o.height / 2 - cy) < 1)) {
+              newGuides.h.push(cy);
+            }
+          }
+        });
+      });
+      if (bestDy <= SNAP) newY = snapY;
+
+      const dx = newX - primaryItem.x;
+      const dy = newY - primaryItem.y;
 
       setItems(items.map(i =>
         selectedIds.includes(i.id) && !i.locked
           ? { ...i, x: i.x + dx, y: i.y + dy }
           : i
       ));
-      setOffset({ x: e.clientX - (primaryItem.x + dx), y: e.clientY - (primaryItem.y + dy) });
+      setOffset({ x: e.clientX - newX, y: e.clientY - newY });
+      setGuides(newGuides);
+    } else {
+      setGuides({ v: [], h: [] });
     }
 
     if (resizing) {
@@ -331,6 +402,7 @@ export default function Editor() {
     }
     setDragging(false);
     setResizing(null);
+    setGuides({ v: [], h: [] });
   };
 
   // ---------- Layers helpers ----------
@@ -377,6 +449,28 @@ export default function Editor() {
   };
 
   // ---------- Alignment ----------
+  const distribute = (axis: 'h' | 'v') => {
+    if (selectedIds.length < 3) return;
+    const sel = [...selected].sort((a, b) => axis === 'h' ? a.x - b.x : a.y - b.y);
+    const first = sel[0];
+    const last = sel[sel.length - 1];
+    const totalSpace = axis === 'h'
+      ? (last.x + last.width) - first.x
+      : (last.y + last.height) - first.y;
+    const itemSpace = sel.reduce((s, i) => s + (axis === 'h' ? i.width : i.height), 0);
+    const gap = (totalSpace - itemSpace) / (sel.length - 1);
+    let pos = axis === 'h' ? first.x : first.y;
+    const next = items.map(i => {
+      const idx = sel.findIndex(s => s.id === i.id);
+      if (idx === -1) return i;
+      const item = sel[idx];
+      if (idx === 0) return i;
+      pos += (axis === 'h' ? sel[idx - 1].width : sel[idx - 1].height) + gap;
+      return axis === 'h' ? { ...i, x: pos } : { ...i, y: pos };
+    });
+    pushHistory(next);
+  };
+
   const align = (type: string) => {
     if (!primary) return;
     const canvasW = 900;
@@ -446,6 +540,29 @@ export default function Editor() {
           </div>
         </div>
 
+        <div className="p-3 border-b space-y-2">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Grid & Guides</div>
+          <label className="flex items-center justify-between text-sm">
+            <span>Show grid</span>
+            <input type="checkbox" checked={showGrid} onChange={(e) => setShowGrid(e.target.checked)} />
+          </label>
+          <label className="flex items-center justify-between text-sm">
+            <span>Snap to grid</span>
+            <input type="checkbox" checked={snapToGrid} onChange={(e) => setSnapToGrid(e.target.checked)} />
+          </label>
+          <div className="flex items-center gap-2 text-sm">
+            <span>Size</span>
+            <input
+              type="number"
+              min="5"
+              max="50"
+              value={gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value) || 20)}
+              className="w-16 border rounded px-1 py-0.5 text-xs"
+            />
+          </div>
+        </div>
+
         <div className="p-3 mt-auto space-y-2 border-t">
           <div className="flex gap-2">
             <button onClick={undo} className="flex-1 py-2 text-sm border rounded-lg hover:bg-slate-50">Undo</button>
@@ -480,6 +597,36 @@ export default function Editor() {
             transform: `scale(${zoom})`,
           }}
         >
+          {/* Grid overlay */}
+          {showGrid && (
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                backgroundImage: `
+                  linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px),
+                  linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)
+                `,
+                backgroundSize: `${gridSize}px ${gridSize}px`,
+              }}
+            />
+          )}
+
+          {/* Smart guides */}
+          {guides.v.map((x, i) => (
+            <div
+              key={`v${i}`}
+              className="absolute top-0 bottom-0 w-px bg-pink-500 pointer-events-none z-30"
+              style={{ left: x }}
+            />
+          ))}
+          {guides.h.map((y, i) => (
+            <div
+              key={`h${i}`}
+              className="absolute left-0 right-0 h-px bg-pink-500 pointer-events-none z-30"
+              style={{ top: y }}
+            />
+          ))}
+
           {items.filter(i => !i.hidden).map(item => (
             <div
               key={item.id}
@@ -589,49 +736,41 @@ export default function Editor() {
               key={item.id}
               onClick={(e) => {
                 e.stopPropagation();
-                if (e.shiftKey) {
-                  setSelectedIds(prev =>
-                    prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id]
-                  );
-                } else {
-                  setSelectedIds([item.id]);
-                }
+                setSelectedIds([item.id]);
               }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer mb-1 transition ${
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm cursor-pointer mb-1 ${
                 selectedIds.includes(item.id) ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
               }`}
             >
+              <span className="text-xs opacity-50">{item.type === 'text' ? 'T' : item.type === 'photo' ? '🖼' : '□'}</span>
               <span className="truncate flex-1">
-                {item.type === 'text' ? (item.content?.slice(0, 20) || 'Text') : item.type === 'photo' ? 'Photo' : 'Group'}
+                {item.type === 'text' ? (item.content || 'Text') : item.type === 'photo' ? 'Photo' : 'Group'}
               </span>
-              {item.locked && <span className="text-xs opacity-60">🔒</span>}
-              {item.hidden && <span className="text-xs opacity-60">👁️</span>}
+              {item.locked && <span className="text-xs">🔒</span>}
+              {item.hidden && <span className="text-xs">👁‍🗨</span>}
             </div>
           ))}
-          {items.length === 0 && (
-            <div className="text-sm text-slate-400 text-center py-8">No layers yet</div>
-          )}
         </div>
 
         {primary && (
-          <div className="p-4 border-t space-y-3 max-h-[50%] overflow-y-auto">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Properties</div>
+          <div className="p-3 border-t space-y-3">
+            <div className="text-xs font-semibold text-slate-500 uppercase">Properties</div>
 
             {primary.type === 'text' && (
               <>
                 <div>
-                  <label className="text-xs text-slate-500">Size</label>
+                  <label className="text-xs text-slate-500">Font size</label>
                   <input
                     type="number"
-                    value={primary.fontSize || 22}
+                    value={primary.fontSize || 18}
                     onChange={(e) => {
-                      const val = +e.target.value;
+                      const val = Number(e.target.value);
                       setItems(items.map(i =>
                         selectedIds.includes(i.id) ? { ...i, fontSize: val } : i
                       ));
                     }}
                     onBlur={commit}
-                    className="w-full border rounded-lg px-2 py-1.5 text-sm mt-1"
+                    className="w-full border rounded-lg px-2 py-1 text-sm mt-1"
                   />
                 </div>
                 <div>
@@ -694,6 +833,15 @@ export default function Editor() {
                   {a}
                 </button>
               ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => distribute('h')} className="flex-1 py-1.5 text-xs border rounded-lg hover:bg-slate-50">
+                Distribute H
+              </button>
+              <button onClick={() => distribute('v')} className="flex-1 py-1.5 text-xs border rounded-lg hover:bg-slate-50">
+                Distribute V
+              </button>
             </div>
 
             <div className="flex gap-2">
