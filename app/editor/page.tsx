@@ -6,6 +6,7 @@ import { Canvas, Rect, Circle, Triangle, IText, FabricImage, Group, Line } from 
 export default function Editor() {
   const canvasEl = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<any>(null);
   const [objects, setObjects] = useState<any[]>([]);
   const [bgColor, setBgColor] = useState('#ffffff');
@@ -13,21 +14,26 @@ export default function Editor() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
-  const [activePanel, setActivePanel] = useState<'text'|'shapes'|'symbols'|'templates'|null>('text');
+  const [activePanel, setActivePanel] = useState<'text'|'shapes'|'symbols'|'templates'|null>(null);
   const [pageSize, setPageSize] = useState({ w: 800, h: 600, name: 'Square' });
   const [renaming, setRenaming] = useState<any>(null);
   const [renameValue, setRenameValue] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<any>>(new Set());
   const [editingGroup, setEditingGroup] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [showLayers, setShowLayers] = useState(true);
+  const [showLayers, setShowLayers] = useState(false);
+  const [showContext, setShowContext] = useState(false);
   const [lockVersion, setLockVersion] = useState(0);
   const isRestoring = useRef(false);
   const guidesRef = useRef<any[]>([]);
   const tempGuidesRef = useRef<any[]>([]);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setShowLayers(true);
+    };
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
@@ -161,9 +167,9 @@ export default function Editor() {
     canvas.on('object:added', (e) => { if (!e.target?.excludeFromExport && !(e.target as any).__isGrid) pushHistory(); });
     canvas.on('object:removed', pushHistory);
 
-    canvas.on('selection:created', (e) => { clearTempGuides(); setSelected(e.selected?.[0] || null); refreshObjects(); });
-    canvas.on('selection:updated', (e) => { clearTempGuides(); setSelected(e.selected?.[0] || null); refreshObjects(); });
-    canvas.on('selection:cleared', () => { clearTempGuides(); setSelected(null); refreshObjects(); });
+    canvas.on('selection:created', (e) => { clearTempGuides(); setSelected(e.selected?.[0] || null); setShowContext(true); refreshObjects(); });
+    canvas.on('selection:updated', (e) => { clearTempGuides(); setSelected(e.selected?.[0] || null); setShowContext(true); refreshObjects(); });
+    canvas.on('selection:cleared', () => { clearTempGuides(); setSelected(null); setShowContext(false); refreshObjects(); });
 
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
@@ -223,6 +229,7 @@ export default function Editor() {
     canvas.add(text);
     canvas.setActiveObject(text);
     canvas.renderAll();
+    setActivePanel(null);
   };
 
   const addRect = () => {
@@ -230,6 +237,7 @@ export default function Editor() {
     if (!canvas) return;
     const rect = new Rect({ left: 220, top: 160, width: 160, height: 90, fill: '#0f766e', rx: 0, ry: 0 });
     canvas.add(rect); canvas.setActiveObject(rect); canvas.renderAll();
+    setActivePanel(null);
   };
 
   const addCircle = () => {
@@ -237,6 +245,7 @@ export default function Editor() {
     if (!canvas) return;
     const circle = new Circle({ left: 260, top: 180, radius: 60, fill: '#14b8a6' });
     canvas.add(circle); canvas.setActiveObject(circle); canvas.renderAll();
+    setActivePanel(null);
   };
 
   const addTriangle = () => {
@@ -244,6 +253,7 @@ export default function Editor() {
     if (!canvas) return;
     const tri = new Triangle({ left: 280, top: 180, width: 110, height: 90, fill: '#f59e0b' });
     canvas.add(tri); canvas.setActiveObject(tri); canvas.renderAll();
+    setActivePanel(null);
   };
 
   const addImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,6 +266,7 @@ export default function Editor() {
       fabricRef.current!.add(img);
       fabricRef.current!.setActiveObject(img);
       fabricRef.current!.renderAll();
+      setActivePanel(null);
     };
     reader.readAsDataURL(file);
   };
@@ -300,6 +311,7 @@ export default function Editor() {
     }
     canvas.renderAll();
     pushHistory();
+    setActivePanel(null);
   };
 
   const deleteSelected = () => {
@@ -308,6 +320,7 @@ export default function Editor() {
     canvas.getActiveObjects().forEach((obj) => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.renderAll();
+    setShowContext(false);
   };
 
   const updateSelected = (props: any) => {
@@ -343,25 +356,6 @@ export default function Editor() {
       if (dir === 'top') obj.set({ top: 30 });
       if (dir === 'middle') obj.set({ top: (canvasH - (obj.height || 0) * (obj.scaleY || 1)) / 2 });
       if (dir === 'bottom') obj.set({ top: canvasH - (obj.height || 0) * (obj.scaleY || 1) - 30 });
-    });
-    canvas.renderAll();
-    pushHistory();
-  };
-
-  const distribute = (dir: 'horizontal' | 'vertical') => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    clearTempGuides();
-    const active = canvas.getActiveObjects();
-    if (active.length < 3) return;
-    const sorted = [...active].sort((a, b) => dir === 'horizontal' ? (a.left || 0) - (b.left || 0) : (a.top || 0) - (b.top || 0));
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    const total = dir === 'horizontal' ? ((last.left || 0) - (first.left || 0)) : ((last.top || 0) - (first.top || 0));
-    const step = total / (sorted.length - 1);
-    sorted.forEach((obj, i) => {
-      if (dir === 'horizontal') obj.set({ left: (first.left || 0) + step * i });
-      else obj.set({ top: (first.top || 0) + step * i });
     });
     canvas.renderAll();
     pushHistory();
@@ -453,43 +447,19 @@ export default function Editor() {
     setExpandedGroups(prev => { const n = new Set(prev); n.delete(selected); return n; });
   };
 
-  const enterGroup = (group: any) => {
-    if (group.type !== 'group') return;
-    setEditingGroup(group);
-    setExpandedGroups(prev => new Set(prev).add(group));
-    fabricRef.current?.setActiveObject(group);
-    fabricRef.current?.renderAll();
-    setSelected(group);
-  };
-
-  const exitGroup = () => {
-    setEditingGroup(null);
-    fabricRef.current?.discardActiveObject();
-    fabricRef.current?.renderAll();
-    setSelected(null);
-  };
-
-  const toggleExpand = (group: any) => {
-    setExpandedGroups(prev => {
-      const n = new Set(prev);
-      if (n.has(group)) n.delete(group);
-      else n.add(group);
-      return n;
-    });
-  };
-
   const selectObject = (obj: any) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     canvas.setActiveObject(obj);
     canvas.renderAll();
     setSelected(obj);
+    if (isMobile) setShowLayers(false);
   };
 
   const changeZoom = (delta: number) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    const newZoom = Math.min(2, Math.max(0.4, zoom + delta));
+    const newZoom = Math.min(2, Math.max(0.3, zoom + delta));
     setZoom(newZoom);
     canvas.setZoom(newZoom);
     canvas.setWidth(pageSize.w * newZoom);
@@ -529,19 +499,6 @@ export default function Editor() {
     });
   };
 
-  const startRename = (obj: any) => {
-    setRenaming(obj);
-    setRenameValue(obj.name || getLabel(obj));
-  };
-
-  const commitRename = () => {
-    if (renaming) {
-      renaming.set({ name: renameValue });
-      pushHistory();
-    }
-    setRenaming(null);
-  };
-
   const getLabel = (obj: any) => {
     if (obj.name) return obj.name;
     if (obj.type === 'i-text') return obj.text?.slice(0, 18) || 'Text';
@@ -566,18 +523,6 @@ export default function Editor() {
     pushHistory();
   };
 
-  const onDragStart = (e: React.DragEvent, idx: number) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(idx));
-  };
-
-  const onDrop = (e: React.DragEvent, targetIdx: number) => {
-    e.preventDefault();
-    const fromIdx = Number(e.dataTransfer.getData('text/plain'));
-    if (isNaN(fromIdx) || fromIdx === targetIdx) return;
-    moveLayer(fromIdx, targetIdx);
-  };
-
   const renderLayerItem = (obj: any, depth = 0) => {
     const isGroup = obj.type === 'group';
     const isExpanded = expandedGroups.has(obj);
@@ -588,44 +533,25 @@ export default function Editor() {
     return (
       <div key={obj} style={{ paddingLeft: depth * 12 }}>
         <div
-          draggable={!isMobile && depth === 0}
-          onDragStart={(e) => !isMobile && depth === 0 && onDragStart(e, idx)}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => !isMobile && depth === 0 && onDrop(e, idx)}
           onClick={() => selectObject(obj)}
-          onDoubleClick={() => isGroup ? enterGroup(obj) : startRename(obj)}
-          className={`group px-2 py-1.5 text-sm rounded-lg cursor-pointer mb-0.5 flex items-center gap-1.5 font-medium ${selected === obj ? 'bg-teal-100 text-teal-900' : 'hover:bg-slate-100 text-slate-900'}`}
+          className={`px-3 py-3 text-sm rounded-lg cursor-pointer mb-1 flex items-center gap-2 font-medium min-h-[48px] ${selected === obj ? 'bg-teal-100 text-teal-900' : 'hover:bg-slate-100 text-slate-900'}`}
         >
           {isGroup ? (
-            <button onClick={(e) => { e.stopPropagation(); toggleExpand(obj); }} className="w-4 h-4 text-xs flex items-center justify-center hover:bg-slate-200 rounded text-slate-900">
+            <button onClick={(e) => { e.stopPropagation(); setExpandedGroups(prev => { const n = new Set(prev); if (n.has(obj)) n.delete(obj); else n.add(obj); return n; }); }} className="w-8 h-8 text-xs flex items-center justify-center hover:bg-slate-200 rounded text-slate-900">
               {isExpanded ? '▼' : '▶'}
             </button>
           ) : (
-            <span className="w-4" />
+            <span className="w-8" />
           )}
-          {!isMobile && depth === 0 && <span className="text-slate-600 cursor-grab text-xs">⠇</span>}
-          {renaming === obj ? (
-            <input
-              autoFocus
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(e) => e.key === 'Enter' && commitRename()}
-              className="flex-1 border border-teal-400 rounded px-1 py-0.5 text-sm text-slate-900"
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <span className="flex-1 truncate text-slate-900">{getLabel(obj)}</span>
-          )}
-          {isGroup && <span className="text-[10px] text-slate-700 font-medium">{children.length}</span>}
-          <div className="flex gap-0.5">
-            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.max(0, idx - 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded text-slate-900" title="Move up">↑</button>
-            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.min(objects.length - 1, idx + 1)); }} className="w-5 h-5 text-xs hover:bg-slate-200 rounded text-slate-900" title="Move down">↓</button>
+          <span className="flex-1 truncate text-slate-900">{getLabel(obj)}</span>
+          <div className="flex gap-1">
+            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.max(0, idx - 1)); }} className="w-8 h-8 text-sm hover:bg-slate-200 rounded text-slate-900 flex items-center justify-center" title="Move up">↑</button>
+            <button onClick={(e) => { e.stopPropagation(); moveLayer(idx, Math.min(objects.length - 1, idx + 1)); }} className="w-8 h-8 text-sm hover:bg-slate-200 rounded text-slate-900 flex items-center justify-center" title="Move down">↓</button>
           </div>
-          <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded" title="Toggle visibility">
+          <button onClick={(e) => { e.stopPropagation(); toggleVisible(obj); }} className="w-8 h-8 flex items-center justify-center hover:bg-slate-200 rounded text-lg" title="Toggle visibility">
             {obj.visible === false ? '🙈' : '👁'}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`text-xs w-5 h-5 flex items-center justify-center hover:bg-slate-200 rounded ${isLocked ? 'text-amber-700' : ''}`} title={isLocked ? 'Unlock' : 'Lock'}>
+          <button onClick={(e) => { e.stopPropagation(); toggleLock(obj); }} className={`w-8 h-8 flex items-center justify-center hover:bg-slate-200 rounded text-lg ${isLocked ? 'text-amber-700' : ''}`} title={isLocked ? 'Unlock' : 'Lock'}>
             {isLocked ? '🔒' : '🔓'}
           </button>
         </div>
@@ -634,8 +560,99 @@ export default function Editor() {
     );
   };
 
+  const ToolSheet = () => {
+    if (!activePanel || !isMobile) return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setActivePanel(null)}>
+        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[70vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="sticky top-0 bg-white px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+            <span className="font-bold text-slate-900 text-base">
+              {activePanel === 'text' && 'Add Text'}
+              {activePanel === 'shapes' && 'Add Shape'}
+              {activePanel === 'symbols' && 'Symbols'}
+              {activePanel === 'templates' && 'Templates'}
+            </span>
+            <button onClick={() => setActivePanel(null)} className="w-10 h-10 flex items-center justify-center text-slate-700 text-xl font-bold">✕</button>
+          </div>
+          <div className="p-4 pb-8">
+            {activePanel === 'text' && (
+              <button onClick={() => addText()} className="w-full py-4 bg-teal-700 text-white rounded-xl text-base font-semibold">+ Add text</button>
+            )}
+            {activePanel === 'shapes' && (
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={addRect} className="py-4 border-2 border-slate-400 rounded-xl text-base font-semibold text-slate-900">Rectangle</button>
+                <button onClick={addCircle} className="py-4 border-2 border-slate-400 rounded-xl text-base font-semibold text-slate-900">Circle</button>
+                <button onClick={addTriangle} className="py-4 border-2 border-slate-400 rounded-xl text-base font-semibold text-slate-900">Triangle</button>
+                <label className="py-4 border-2 border-slate-400 rounded-xl text-base font-semibold text-slate-900 flex items-center justify-center cursor-pointer">
+                  + Image
+                  <input type="file" accept="image/*" className="hidden" onChange={addImage} />
+                </label>
+              </div>
+            )}
+            {activePanel === 'symbols' && (
+              <div className="grid grid-cols-4 gap-3">
+                {[['🍎','Food'],['🚽','Bath'],['💧','Drink'],['🛑','Break'],['📖','Read'],['✏️','Write'],['🤝','Help'],['✅','Done']].map(([e, l]) => (
+                  <button key={l} onClick={() => addSymbol(e, l)} className="aspect-square flex items-center justify-center text-3xl border-2 border-slate-400 rounded-xl hover:bg-teal-50" title={l}>{e}</button>
+                ))}
+              </div>
+            )}
+            {activePanel === 'templates' && (
+              <div className="space-y-2">
+                {['Visual Schedule','First-Then','Communication Board','Token Board'].map(name => (
+                  <button key={name} onClick={() => loadTemplate(name)} className="w-full text-left px-4 py-4 text-base font-semibold text-slate-900 rounded-xl border-2 border-slate-300 hover:bg-slate-50">{name}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const ContextBar = () => {
+    if (!isMobile || !selected || !showContext) return null;
+    return (
+      <div className="fixed left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-lg" style={{ bottom: '64px' }}>
+        <div className="flex items-center gap-1 px-2 py-2 overflow-x-auto">
+          <button onClick={duplicateSelected} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-slate-900 bg-slate-100 rounded-lg">Duplicate</button>
+          <button onClick={deleteSelected} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-red-700 bg-red-50 rounded-lg">Delete</button>
+          <button onClick={() => toggleLock()} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-slate-900 bg-slate-100 rounded-lg">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
+          <button onClick={bringToFront} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-slate-900 bg-slate-100 rounded-lg">Front</button>
+          <button onClick={sendToBack} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-slate-900 bg-slate-100 rounded-lg">Back</button>
+          <button onClick={() => align('center')} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-slate-900 bg-slate-100 rounded-lg">Center</button>
+          <button onClick={() => align('middle')} className="flex-shrink-0 px-3 py-2 text-sm font-semibold text-slate-900 bg-slate-100 rounded-lg">Middle</button>
+          {selected.type === 'i-text' && (
+            <>
+              <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`flex-shrink-0 px-3 py-2 text-sm font-bold rounded-lg ${selected.fontWeight === 'bold' ? 'bg-teal-100 text-teal-900' : 'bg-slate-100 text-slate-900'}`}>B</button>
+              <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`flex-shrink-0 px-3 py-2 text-sm italic rounded-lg ${selected.fontStyle === 'italic' ? 'bg-teal-100 text-teal-900' : 'bg-slate-100 text-slate-900'}`}>I</button>
+            </>
+          )}
+          <button onClick={() => setShowContext(false)} className="flex-shrink-0 w-10 h-10 flex items-center justify-center text-slate-600">✕</button>
+        </div>
+      </div>
+    );
+  };
+
+  const LayersSheet = () => {
+    if (!isMobile || !showLayers) return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setShowLayers(false)}>
+        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl max-h-[70vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between shrink-0">
+            <span className="font-bold text-slate-900 text-base">Layers</span>
+            <button onClick={() => setShowLayers(false)} className="w-10 h-10 flex items-center justify-center text-slate-700 text-xl font-bold">✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            {objects.length === 0 && <div className="text-sm font-medium text-slate-700 text-center py-8">No objects yet</div>}
+            {objects.map((obj) => renderLayerItem(obj))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans text-slate-900 flex-col md:flex-row">
+    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans text-slate-900 flex-col md:flex-row" style={{ touchAction: 'manipulation' }}>
       {!isMobile && (
         <div className="w-16 bg-white border-r border-slate-300 flex flex-col items-center py-3 shrink-0">
           <div className="text-2xl mb-4">🍎</div>
@@ -661,8 +678,8 @@ export default function Editor() {
         </div>
       )}
 
-      {activePanel && (
-        <div className={`${isMobile ? 'fixed inset-0 z-40 bg-white' : 'w-64'} bg-white border-r border-slate-300 flex flex-col shrink-0 overflow-y-auto`}>
+      {activePanel && !isMobile && (
+        <div className="w-64 bg-white border-r border-slate-300 flex flex-col shrink-0 overflow-y-auto">
           <div className="px-4 py-3 border-b border-slate-300 font-bold text-slate-900 text-sm flex items-center justify-between">
             {activePanel === 'text' && 'Text'}
             {activePanel === 'shapes' && 'Shapes'}
@@ -717,85 +734,61 @@ export default function Editor() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="h-12 md:h-14 bg-white border-b border-slate-300 flex items-center px-2 md:px-4 gap-1 md:gap-2 shrink-0 overflow-x-auto">
-          {editingGroup && (
-            <button onClick={exitGroup} className="px-2 py-1 text-xs md:text-sm font-semibold text-teal-800 bg-teal-100 rounded-md hover:bg-teal-200 whitespace-nowrap">← Exit</button>
-          )}
-          {selected ? (
+      <div className="flex-1 flex flex-col min-w-0 min-h-0" ref={containerRef}>
+        <div className={`bg-white border-b border-slate-300 flex items-center px-3 gap-2 shrink-0 ${isMobile ? 'h-12' : 'h-14'}`}>
+          <span className="font-bold text-slate-900 text-sm md:text-base">🍎 AppleStem</span>
+          {!isMobile && selected && (
             <>
-              <button onClick={duplicateSelected} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md whitespace-nowrap">Dup</button>
-              <button onClick={deleteSelected} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Del</button>
-              <button onClick={() => toggleLock()} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md whitespace-nowrap">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
-              <div className="w-px h-5 bg-slate-300 mx-1 hidden md:block" />
-              <button onClick={bringToFront} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Front</button>
-              <button onClick={sendToBack} className="px-2 py-1 text-xs md:text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Back</button>
-              {selected.type === 'i-text' && (
-                <>
-                  <button onClick={() => updateSelected({ fontWeight: selected.fontWeight === 'bold' ? 'normal' : 'bold' })} className={`px-2 py-1 text-xs md:text-sm font-bold rounded ${selected.fontWeight === 'bold' ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>B</button>
-                  <button onClick={() => updateSelected({ fontStyle: selected.fontStyle === 'italic' ? 'normal' : 'italic' })} className={`px-2 py-1 text-xs md:text-sm italic rounded ${selected.fontStyle === 'italic' ? 'bg-slate-200' : 'hover:bg-slate-100'}`}>I</button>
-                </>
-              )}
-              {selected.type === 'group' && (
-                <button onClick={() => enterGroup(selected)} className="px-2 py-1 text-xs md:text-sm font-semibold text-teal-800 hover:bg-teal-100 rounded-md">Enter</button>
-              )}
+              <div className="w-px h-5 bg-slate-300 mx-1" />
+              <button onClick={duplicateSelected} className="px-2 py-1 text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Dup</button>
+              <button onClick={deleteSelected} className="px-2 py-1 text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Del</button>
+              <button onClick={() => toggleLock()} className="px-2 py-1 text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">{selected.lockMovementX ? 'Unlock' : 'Lock'}</button>
+              <button onClick={bringToFront} className="px-2 py-1 text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Front</button>
+              <button onClick={sendToBack} className="px-2 py-1 text-sm font-semibold text-slate-900 hover:bg-slate-100 rounded-md">Back</button>
             </>
-          ) : (
-            <span className="text-xs md:text-sm font-medium text-slate-800">Select an object to edit</span>
           )}
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={exportPNG} className="px-3 py-1.5 bg-slate-900 text-white text-xs md:text-sm font-semibold rounded-lg hover:bg-slate-800">Export</button>
-          </div>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center p-2 md:p-6 overflow-auto bg-slate-100">
-          <div className="relative shadow-xl md:shadow-2xl rounded-lg max-w-full">
-            <canvas ref={canvasEl} className="max-w-full h-auto" style={{ background: '#ffffff' }} />
-            {selected && !isMobile && (
-              <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-white shadow-lg border-2 border-slate-300 rounded-full px-2 py-1 z-10">
-                <button onClick={duplicateSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Duplicate">⎘</button>
-                <button onClick={() => toggleLock()} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-slate-100 rounded-full" title="Lock">🔒</button>
-                <button onClick={deleteSelected} className="w-7 h-7 flex items-center justify-center text-sm hover:bg-red-50 text-red-700 rounded-full" title="Delete">🗑</button>
-              </div>
+            {!isMobile && (
+              <>
+                <button onClick={() => changeZoom(-0.1)} className="w-8 h-8 border-2 border-slate-400 rounded text-slate-900 font-medium">−</button>
+                <span className="text-sm font-semibold text-slate-900 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => changeZoom(0.1)} className="w-8 h-8 border-2 border-slate-400 rounded text-slate-900 font-medium">+</button>
+              </>
             )}
+            <button onClick={exportPNG} className={`bg-slate-900 text-white font-semibold rounded-lg ${isMobile ? 'px-3 py-1.5 text-sm' : 'px-4 py-2 text-sm'}`}>Export</button>
           </div>
         </div>
 
-        <div className="h-10 md:h-12 bg-white border-t border-slate-300 flex items-center px-3 gap-3 shrink-0">
-          <div className="flex items-center gap-1">
-            <button onClick={() => changeZoom(-0.1)} className="w-7 h-7 border-2 border-slate-400 rounded hover:bg-slate-100 text-slate-900 font-medium text-sm">−</button>
-            <span className="text-xs md:text-sm font-semibold text-slate-900 w-10 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => changeZoom(0.1)} className="w-7 h-7 border-2 border-slate-400 rounded hover:bg-slate-100 text-slate-900 font-medium text-sm">+</button>
+        <div className="flex-1 flex items-center justify-center overflow-auto bg-slate-100" style={{ paddingBottom: isMobile ? 80 : 0 }}>
+          <div className="relative shadow-xl rounded-lg max-w-full" style={{ margin: isMobile ? '8px' : '24px' }}>
+            <canvas ref={canvasEl} style={{ background: '#ffffff', maxWidth: '100%', height: 'auto' }} />
           </div>
-          <div className="text-xs md:text-sm font-medium text-slate-800">{objects.length} object{objects.length !== 1 ? 's' : ''}</div>
-          {isMobile && (
-            <button onClick={() => setShowLayers(!showLayers)} className="ml-auto text-xs px-2 py-1 border-2 border-slate-400 rounded font-medium text-slate-900">Layers</button>
-          )}
         </div>
+
+        {!isMobile && (
+          <div className="h-12 bg-white border-t border-slate-300 flex items-center px-3 gap-3 shrink-0">
+            <div className="text-sm font-medium text-slate-800">{objects.length} object{objects.length !== 1 ? 's' : ''}</div>
+          </div>
+        )}
       </div>
 
-      {(showLayers || !isMobile) && (
-        <div className={`${isMobile ? 'fixed bottom-0 left-0 right-0 h-64 z-30 shadow-2xl' : 'w-72'} bg-white border-l border-slate-300 flex flex-col shrink-0`}>
-          <div className="px-3 py-2 border-b border-slate-300 font-bold text-slate-900 text-sm flex items-center justify-between">
-            Layers
-            {isMobile && <button onClick={() => setShowLayers(false)} className="text-slate-700 font-bold">✕</button>}
-          </div>
+      {!isMobile && showLayers && (
+        <div className="w-72 bg-white border-l border-slate-300 flex flex-col shrink-0">
+          <div className="px-3 py-2 border-b border-slate-300 font-bold text-slate-900 text-sm">Layers</div>
           <div className="flex-1 overflow-y-auto p-2">
-            {objects.length === 0 && (
-              <div className="text-sm font-medium text-slate-800 text-center py-6">No objects yet</div>
-            )}
+            {objects.length === 0 && <div className="text-sm font-medium text-slate-800 text-center py-6">No objects yet</div>}
             {objects.map((obj) => renderLayerItem(obj))}
           </div>
-          <div className="p-2 border-t border-slate-300 space-y-2 max-h-40 overflow-y-auto">
+          <div className="p-2 border-t border-slate-300 space-y-2 max-h-48 overflow-y-auto">
             <div className="text-xs font-bold text-slate-900 uppercase tracking-wide">Align</div>
             <div className="grid grid-cols-3 gap-1">
               {['left','center','right','top','middle','bottom'].map(d => (
-                <button key={d} onClick={() => align(d)} className="py-1.5 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 capitalize font-semibold text-slate-900">{d}</button>
+                <button key={d} onClick={() => align(d)} className="py-2 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 capitalize font-semibold text-slate-900">{d}</button>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-1">
-              <button onClick={groupSelected} className="py-1.5 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 font-semibold text-slate-900">Group</button>
-              <button onClick={ungroup} className="py-1.5 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 font-semibold text-slate-900">Ungroup</button>
+              <button onClick={groupSelected} className="py-2 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 font-semibold text-slate-900">Group</button>
+              <button onClick={ungroup} className="py-2 text-xs border-2 border-slate-400 rounded hover:bg-slate-100 font-semibold text-slate-900">Ungroup</button>
             </div>
             {selected && (
               <div>
@@ -808,7 +801,7 @@ export default function Editor() {
       )}
 
       {isMobile && (
-        <div className="h-14 bg-white border-t border-slate-300 flex items-center justify-around shrink-0">
+        <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-300 flex items-center justify-around z-30 safe-area-bottom" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           {[
             { id: 'text', icon: 'T', label: 'Text' },
             { id: 'shapes', icon: '▢', label: 'Shapes' },
@@ -818,18 +811,22 @@ export default function Editor() {
             <button
               key={item.id}
               onClick={() => setActivePanel(activePanel === item.id ? null : item.id as any)}
-              className={`flex flex-col items-center justify-center text-xs font-semibold ${activePanel === item.id ? 'text-teal-800' : 'text-slate-900'}`}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[48px] text-xs font-semibold ${activePanel === item.id ? 'text-teal-800' : 'text-slate-900'}`}
             >
-              <span className="text-lg">{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="text-xl leading-none">{item.icon}</span>
+              <span className="mt-0.5">{item.label}</span>
             </button>
           ))}
-          <button onClick={() => setShowLayers(!showLayers)} className="flex flex-col items-center justify-center text-xs font-semibold text-slate-900">
-            <span className="text-lg">☰</span>
-            <span>Layers</span>
+          <button onClick={() => setShowLayers(!showLayers)} className="flex flex-col items-center justify-center min-w-[56px] min-h-[48px] text-xs font-semibold text-slate-900">
+            <span className="text-xl leading-none">☰</span>
+            <span className="mt-0.5">Layers</span>
           </button>
         </div>
       )}
+
+      <ToolSheet />
+      <ContextBar />
+      <LayersSheet />
     </div>
   );
 }
