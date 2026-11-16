@@ -1,4 +1,5 @@
 'use client';
+// contrast-force: 2026-11-16
 
 import { useEffect, useRef, useState } from 'react';
 import { Canvas, Rect, Circle, Triangle, IText, FabricImage, Group, Line } from 'fabric';
@@ -560,6 +561,7 @@ export default function Editor() {
     );
   };
 
+  // Mobile bottom sheet for tools
   const ToolSheet = () => {
     if (!activePanel || !isMobile) return null;
     return (
@@ -609,6 +611,7 @@ export default function Editor() {
     );
   };
 
+  // Mobile context toolbar (appears above bottom nav when selected)
   const ContextBar = () => {
     if (!isMobile || !selected || !showContext) return null;
     return (
@@ -633,6 +636,7 @@ export default function Editor() {
     );
   };
 
+  // Mobile layers sheet
   const LayersSheet = () => {
     if (!isMobile || !showLayers) return null;
     return (
@@ -652,7 +656,23 @@ export default function Editor() {
   };
 
   return (
+    
+      <style>{`
+        /* Force dark text on light backgrounds */
+        .text-slate-900, button, span, label, div, p, h1, h2, h3 {
+          color: #0f172a !important;
+        }
+        /* Keep white text on dark buttons */
+        .bg-slate-900, .bg-teal-700, .bg-teal-800, button.bg-slate-900, button.bg-teal-700 {
+          color: #ffffff !important;
+        }
+        .bg-teal-700 *, .bg-slate-900 * {
+          color: #ffffff !important;
+        }
+      `}</style>
+
     <div className="flex h-screen bg-slate-100 overflow-hidden font-sans text-slate-900 flex-col md:flex-row" style={{ touchAction: 'manipulation' }}>
+      {/* Desktop left rail */}
       {!isMobile && (
         <div className="w-16 bg-white border-r border-slate-300 flex flex-col items-center py-3 shrink-0">
           <div className="text-2xl mb-4">🍎</div>
@@ -678,6 +698,7 @@ export default function Editor() {
         </div>
       )}
 
+      {/* Desktop expandable panel */}
       {activePanel && !isMobile && (
         <div className="w-64 bg-white border-r border-slate-300 flex flex-col shrink-0 overflow-y-auto">
           <div className="px-4 py-3 border-b border-slate-300 font-bold text-slate-900 text-sm flex items-center justify-between">
@@ -734,7 +755,9 @@ export default function Editor() {
         </div>
       )}
 
+      {/* Main canvas area */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0" ref={containerRef}>
+        {/* Top bar */}
         <div className={`bg-white border-b border-slate-300 flex items-center px-3 gap-2 shrink-0 ${isMobile ? 'h-12' : 'h-14'}`}>
           <span className="font-bold text-slate-900 text-sm md:text-base">🍎 AppleStem</span>
           {!isMobile && selected && (
@@ -759,12 +782,14 @@ export default function Editor() {
           </div>
         </div>
 
+        {/* Canvas workspace */}
         <div className="flex-1 flex items-center justify-center overflow-auto bg-slate-100" style={{ paddingBottom: isMobile ? 80 : 0 }}>
           <div className="relative shadow-xl rounded-lg max-w-full" style={{ margin: isMobile ? '8px' : '24px' }}>
             <canvas ref={canvasEl} style={{ background: '#ffffff', maxWidth: '100%', height: 'auto' }} />
           </div>
         </div>
 
+        {/* Desktop bottom bar */}
         {!isMobile && (
           <div className="h-12 bg-white border-t border-slate-300 flex items-center px-3 gap-3 shrink-0">
             <div className="text-sm font-medium text-slate-800">{objects.length} object{objects.length !== 1 ? 's' : ''}</div>
@@ -772,6 +797,7 @@ export default function Editor() {
         )}
       </div>
 
+      {/* Desktop layers panel */}
       {!isMobile && showLayers && (
         <div className="w-72 bg-white border-l border-slate-300 flex flex-col shrink-0">
           <div className="px-3 py-2 border-b border-slate-300 font-bold text-slate-900 text-sm">Layers</div>
@@ -800,6 +826,7 @@ export default function Editor() {
         </div>
       )}
 
+      {/* Mobile bottom nav */}
       {isMobile && (
         <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-300 flex items-center justify-around z-30 safe-area-bottom" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           {[
@@ -824,6 +851,7 @@ export default function Editor() {
         </div>
       )}
 
+      {/* Mobile overlays */}
       <ToolSheet />
       <ContextBar />
       <LayersSheet />
