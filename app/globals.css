@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
 }
 
 @theme inline {
@@ -12,15 +12,22 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: #ffffff;
+  color: #0f172a;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Force readable dark text on light backgrounds */
+button, span, label, div, p, h1, h2, h3, a {
+  color: #0f172a;
+}
+
+/* Preserve white text on dark buttons */
+.bg-slate-900, .bg-teal-700, .bg-teal-800, .bg-red-500, .bg-red-600,
+button.bg-slate-900, button.bg-teal-700, button.bg-red-500 {
+  color: #ffffff !important;
+}
+.bg-slate-900 *, .bg-teal-700 *, .bg-red-500 * {
+  color: #ffffff !important;
 }
